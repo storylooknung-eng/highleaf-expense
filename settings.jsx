@@ -18,22 +18,84 @@ function Toggle({ on, onClick }) {
   );
 }
 
+function AddUserModal({ onClose, onAdd }) {
+  const [name, setName]   = useState("");
+  const [email, setEmail] = useState("");
+  const [dept, setDept]   = useState("");
+  const [role, setRole]   = useState("staff");
+  const valid = name.trim() && email.includes("@") && dept.trim();
+  const submit = e => {
+    e.preventDefault();
+    if (!valid) return;
+    onAdd({ name: name.trim(), email: email.trim(), dept: dept.trim(), role, active: true });
+    onClose();
+  };
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>เพิ่มผู้ใช้งานใหม่</div>
+          <button className="icon-btn ml-auto" onClick={onClose}><I.x /></button>
+        </div>
+        <form onSubmit={submit} style={{ padding: 24 }} className="col gap-8">
+          <div className="field">
+            <label>ชื่อ-นามสกุล <span className="req">*</span></label>
+            <input className="inp" placeholder="เช่น สมชาย ใจดี" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="field">
+            <label>อีเมล <span className="req">*</span></label>
+            <input className="inp" type="email" placeholder="name@highleaf.co.th" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>แผนก <span className="req">*</span></label>
+            <input className="inp" placeholder="เช่น การตลาด, ปฏิบัติการ" value={dept} onChange={e => setDept(e.target.value)} />
+          </div>
+          <div className="field" style={{ marginBottom: 24 }}>
+            <label>สิทธิ์การใช้งาน</label>
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              {Object.entries(ROLES).map(([k, v]) => (
+                <button key={k} type="button" onClick={() => setRole(k)} style={{
+                  flex: 1, padding: "10px 0", borderRadius: 12, fontWeight: 600, fontSize: 13.5,
+                  border: "1.6px solid " + (role === k ? "var(--brand)" : "var(--line)"),
+                  background: role === k ? "var(--brand-50)" : "var(--surface)",
+                  color: role === k ? "var(--brand)" : "var(--ink-2)", transition: ".18s"
+                }}>{v.th}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-12">
+            <button type="submit" className="btn-primary" disabled={!valid} style={{ opacity: valid ? 1 : .5 }}>
+              <I.user />เพิ่มผู้ใช้งาน
+            </button>
+            <button type="button" className="btn-ghost" onClick={onClose}>ยกเลิก</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Settings() {
   const toast = useToast();
   const [tab, setTab] = useState("users");
   const [toggles, setToggles] = useState({ autoApprove: false, dailyReport: true, slipRequired: true, lineNotify: true });
   const [limit, setLimit] = useState("5000");
+  const [showAddUser, setShowAddUser] = useState(false);
   const tog = k => setToggles(t => ({ ...t, [k]: !t[k] }));
 
-  const allUsers = [
+  const [users, setUsers] = useState([
     { name: "ฟร้อง", dept: "การตลาด", role: "admin", email: "storylooknung@gmail.com", active: true },
     ...PEOPLE.map((p, i) => ({
       ...p, role: i === 0 || i === 1 ? "approver" : "staff",
       email: ["siri","thanakorn","paweena","anucha","kittipong","napat","weeraphat"][i] + "@highleaf.co.th",
       active: i !== 6,
     }))
-  ];
-  const users = allUsers;
+  ]);
+
+  const addUser = u => {
+    setUsers(prev => [...prev, u]);
+    toast("เพิ่มผู้ใช้งาน " + u.name + " แล้ว", "ok");
+  };
 
   return (
     <div className="page" style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -48,7 +110,7 @@ function Settings() {
           <div className="flex items-center card-pad" style={{ padding: 18, borderBottom: "1px solid var(--line)" }}>
             <div><h2 style={{ fontSize: 16, fontWeight: 700 }}>สมาชิกทีม</h2>
               <span className="sub" style={{ fontSize: 13, color: "var(--ink-3)" }}>{users.length} คน</span></div>
-            <button className="btn-primary ml-auto" onClick={() => toast("เปิดฟอร์มเชิญผู้ใช้งานใหม่")}><I.plus />เพิ่มผู้ใช้งาน</button>
+            <button className="btn-primary ml-auto" onClick={() => setShowAddUser(true)}><I.plus />เพิ่มผู้ใช้งาน</button>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
@@ -123,6 +185,8 @@ function Settings() {
           </div>
         </div>
       )}
+
+      {showAddUser && <AddUserModal onClose={() => setShowAddUser(false)} onAdd={addUser} />}
     </div>
   );
 }
