@@ -14,8 +14,8 @@
 //   4. คัดลอก "Project URL" และ "anon public" key
 // ============================================================
 
-const SUPABASE_URL  = 'PASTE_YOUR_PROJECT_URL_HERE';   // เช่น https://xxxx.supabase.co
-const SUPABASE_ANON = 'PASTE_YOUR_ANON_KEY_HERE';      // เริ่มต้นด้วย eyJ...
+const SUPABASE_URL  = 'https://mdgxxkutyrrxwdvzjvsy.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kZ3h4a3V0eXJyeHdkdnpqdnN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMzQwNjUsImV4cCI6MjA5NTYxMDA2NX0.oeKSEAF-1rWr7tiMgKEeu8qTCXd8554fn-yfkKg_uPg';
 
 window.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: false },
