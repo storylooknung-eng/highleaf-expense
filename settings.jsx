@@ -97,6 +97,12 @@ function Settings() {
     toast("เพิ่มผู้ใช้งาน " + u.name + " แล้ว", "ok");
   };
 
+  const deleteUser = u => {
+    if (u.role === "admin") { toast("ไม่สามารถลบผู้ดูแลระบบได้", "warn"); return; }
+    setUsers(prev => prev.filter(x => x.email !== u.email));
+    toast("ลบ " + u.name + " ออกจากระบบแล้ว", "warn");
+  };
+
   return (
     <div className="page" style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div className="seg" style={{ marginBottom: 20 }}>
@@ -114,7 +120,7 @@ function Settings() {
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>ชื่อ</th><th className="hide-sm">อีเมล</th><th>แผนก</th><th>สิทธิ์</th><th className="ta-r">สถานะ</th></tr></thead>
+              <thead><tr><th>ชื่อ</th><th className="hide-sm">อีเมล</th><th>แผนก</th><th>สิทธิ์</th><th className="ta-r">สถานะ</th><th></th></tr></thead>
               <tbody>
                 {users.map((u, i) => (
                   <tr key={u.email} style={{ animation: `cardUp .4s ${i * 25}ms both` }}>
@@ -126,6 +132,15 @@ function Settings() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: u.active ? "var(--green)" : "var(--ink-3)" }}>
                         {u.active ? "● ใช้งาน" : "○ ปิดใช้งาน"}
                       </span>
+                    </td>
+                    <td className="ta-r" style={{ width: 44 }}>
+                      {u.role !== "admin" && (
+                        <button className="icon-btn" title="ลบผู้ใช้งาน"
+                          style={{ color: "var(--red)" }}
+                          onClick={() => deleteUser(u)}>
+                          <I.trash />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -1,6 +1,8 @@
-// ============ records.jsx — full table with search/filter + slip viewer ============
+// ============ records.jsx — slip viewer, edit modal, full table ============
+
 function SlipModal({ rec, onClose }) {
   if (!rec) return null;
+  const slipImg = localStorage.getItem("slip_" + rec.id);
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
@@ -10,9 +12,16 @@ function SlipModal({ rec, onClose }) {
           <button className="icon-btn ml-auto" onClick={onClose}><I.x /></button>
         </div>
         <div style={{ padding: 24, background: "var(--surface-2)" }}>
-          <div style={{ borderRadius: 14, overflow: "hidden", boxShadow: "var(--sh-2)", background: "#fff", maxWidth: 260, margin: "0 auto" }}>
-            <ReceiptSVG hue={rec.hue} className="rcpt" />
-            <div style={{ aspectRatio: "1/1.25" }}></div>
+          <div style={{ borderRadius: 14, overflow: "hidden", boxShadow: "var(--sh-2)", background: "#fff", maxWidth: 280, margin: "0 auto" }}>
+            {slipImg
+              ? <img src={slipImg} style={{ width: "100%", display: "block", maxHeight: 400, objectFit: "contain" }} />
+              : <>
+                  <ReceiptSVG hue={rec.hue} className="rcpt" />
+                  <div style={{ padding: "10px 14px", background: "var(--brand-50)", textAlign: "center", fontSize: 12.5, color: "var(--brand)" }}>
+                    ตัวอย่างสลิป (ไม่มีไฟล์แนบ)
+                  </div>
+                </>
+            }
           </div>
         </div>
         <div style={{ padding: "18px 24px" }} className="col gap-12">
@@ -26,12 +35,91 @@ function SlipModal({ rec, onClose }) {
   );
 }
 
-function RecordsTable({ records, goCreate }) {
+function EditModal({ rec, onClose, onSave }) {
+  const toast = useToast();
+  const [date, setDate]     = useState(rec.date);
+  const [person, setPerson] = useState(rec.person);
+  const [dept, setDept]     = useState(rec.dept || "");
+  const [amount, setAmount] = useState(String(rec.amount));
+  const [cat, setCat]       = useState(rec.cat);
+  const [note, setNote]     = useState(rec.note || "");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async e => {
+    e.preventDefault();
+    if (!amount || Number(amount) <= 0) { toast("กรุณากรอกจำนวนเงิน", "warn"); return; }
+    setSaving(true);
+    const { error } = await onSave(rec.id, { date, person, dept, amount: Number(amount), cat, note });
+    setSaving(false);
+    if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+    toast("แก้ไขรายการ " + rec.id + " แล้ว", "ok");
+    onClose();
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div><div style={{ fontWeight: 700, fontSize: 16 }}>แก้ไขรายการ</div>
+            <div className="num" style={{ fontSize: 13, color: "var(--ink-3)" }}>{rec.id}</div></div>
+          <button className="icon-btn ml-auto" onClick={onClose}><I.x /></button>
+        </div>
+        <form onSubmit={submit} style={{ padding: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="field">
+              <label>วันที่</label>
+              <input type="date" className="inp" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>จำนวนเงิน <span className="req">*</span></label>
+              <div className="inp-money">
+                <span className="cur">฿</span>
+                <input className="inp" value={amount} inputMode="decimal"
+                  onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} />
+              </div>
+            </div>
+            <div className="field">
+              <label>ชื่อผู้เบิก</label>
+              <input className="inp" value={person} onChange={e => setPerson(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>แผนก</label>
+              <input className="inp" value={dept} onChange={e => setDept(e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>หมวดหมู่</label>
+            <select className="sel" value={cat} onChange={e => setCat(e.target.value)}>
+              {CAT_KEYS.map(k => <option key={k} value={k}>{CATS[k].name}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ marginBottom: 24 }}>
+            <label>รายละเอียด / หมายเหตุ</label>
+            <textarea className="inp" value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+          <div className="flex gap-12">
+            <button type="submit" className="btn-primary" disabled={saving}
+              style={{ opacity: saving ? .7 : 1 }}>
+              {saving
+                ? <span style={{ width:18,height:18,border:"2px solid rgba(255,255,255,.4)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .7s linear infinite",display:"inline-block" }}></span>
+                : <I.check />}
+              {saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>ยกเลิก</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RecordsTable({ records, goCreate, onEdit }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState({ k: "date", dir: -1 });
   const [slip, setSlip] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [page, setPage] = useState(1);
   const PER = 9;
 
@@ -116,7 +204,9 @@ function RecordsTable({ records, goCreate }) {
                 <tr key={r.id} style={{ animation: `cardUp .4s ${i * 30}ms both` }}>
                   <td style={{ width: 54 }}>
                     <div className="slip-thumb" onClick={() => setSlip(r)} style={{ cursor: "pointer" }}>
-                      <ReceiptSVG hue={r.hue} className="rcpt" />
+                      {localStorage.getItem("slip_" + r.id)
+                        ? <img src={localStorage.getItem("slip_" + r.id)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <ReceiptSVG hue={r.hue} className="rcpt" />}
                     </div>
                   </td>
                   <td><span className="num" style={{ fontSize: 13, color: "var(--ink-2)", fontWeight: 600 }}>{r.id}</span></td>
@@ -129,8 +219,11 @@ function RecordsTable({ records, goCreate }) {
                   <td style={{ color: "var(--ink-2)", fontSize: 13.5, whiteSpace: "nowrap" }}>{thDate(r.date, true)}</td>
                   <td className="ta-r"><span className="amount num">{THB(r.amount)}</span></td>
                   <td className="ta-r"><Badge status={r.status} /></td>
-                  <td className="ta-r" style={{ width: 48 }}>
-                    <button className="icon-btn" onClick={() => setSlip(r)}><I.eye /></button>
+                  <td className="ta-r" style={{ width: 80 }}>
+                    <div className="flex" style={{ justifyContent: "flex-end", gap: 4 }}>
+                      <button className="icon-btn" onClick={() => setSlip(r)} title="ดูสลิป"><I.eye /></button>
+                      {onEdit && <button className="icon-btn" onClick={() => setEditing(r)} title="แก้ไข"><I.edit /></button>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -144,7 +237,6 @@ function RecordsTable({ records, goCreate }) {
             <div style={{ fontSize: 13.5, marginTop: 4 }}>ลองปรับคำค้นหาหรือตัวกรองใหม่</div>
           </div>
         )}
-        {/* pagination */}
         {pages > 1 && (
           <div className="flex items-center" style={{ padding: "14px 18px", borderTop: "1px solid var(--line)", gap: 8 }}>
             <span style={{ fontSize: 13, color: "var(--ink-3)" }}>หน้า {page} จาก {pages}</span>
@@ -162,6 +254,7 @@ function RecordsTable({ records, goCreate }) {
       </div>
 
       <SlipModal rec={slip} onClose={() => setSlip(null)} />
+      {editing && <EditModal rec={editing} onClose={() => setEditing(null)} onSave={onEdit} />}
     </div>
   );
 }

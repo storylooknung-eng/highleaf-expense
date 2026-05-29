@@ -26,12 +26,16 @@ function Dropzone({ files, setFiles }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef(null);
   const addFiles = list => {
-    const arr = Array.from(list).map(f => ({
-      id: Math.random(), name: f.name,
-      size: (f.size / 1024).toFixed(0) + " KB",
-      hue: Math.floor(Math.random() * 360),
-    }));
-    setFiles(f => [...f, ...arr]);
+    Array.from(list).forEach(f => {
+      const id = Math.random();
+      const entry = { id, name: f.name, size: (f.size / 1024).toFixed(0) + " KB", hue: Math.floor(Math.random() * 360), dataUrl: null };
+      setFiles(prev => [...prev, entry]);
+      if (f.type && f.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = e => setFiles(prev => prev.map(x => x.id === id ? { ...x, dataUrl: e.target.result } : x));
+        reader.readAsDataURL(f);
+      }
+    });
   };
   return (
     <div>
@@ -50,7 +54,11 @@ function Dropzone({ files, setFiles }) {
         <div className="dz-files">
           {files.map(f => (
             <div className="dz-file" key={f.id}>
-              <div className="pv"><ReceiptSVG hue={f.hue} className="rcpt" /></div>
+              <div className="pv" style={{ overflow: "hidden" }}>
+                {f.dataUrl
+                  ? <img src={f.dataUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <ReceiptSVG hue={f.hue} className="rcpt" />}
+              </div>
               <div className="meta">
                 <div className="fn">{f.name}</div>
                 <div className="fs num">{f.size}</div>
@@ -87,14 +95,20 @@ function ExpenseForm({ onSubmit, goList }) {
     if (!valid) { toast("กรุณากรอกจำนวนเงินและข้อมูลให้ครบ", "warn"); return; }
     if (files.length === 0) { toast("กรุณาแนบไฟล์สลิป/ใบเสร็จ", "warn"); return; }
     setSubmitting(true);
+    const newId = "EXP-" + Math.floor(1000 + Math.random() * 9000);
     const { error } = await onSubmit({
-      id: "EXP-" + Math.floor(1000 + Math.random() * 9000),
+      id: newId,
       date, person, dept, amount: Number(amount), cat,
       note: note || CATS[cat].name, status: "pending",
       hue: files[0]?.hue || 140,
     });
     setSubmitting(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+    // บันทึก slip จริงไว้ดูในโมดัล
+    const slipWithData = files.find(f => f.dataUrl);
+    if (slipWithData) {
+      try { localStorage.setItem("slip_" + newId, slipWithData.dataUrl); } catch (_) {}
+    }
     toast("ส่งรายการเบิกเข้าระบบแล้ว · รอการอนุมัติ", "ok");
     goList();
   };

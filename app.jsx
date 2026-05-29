@@ -64,6 +64,12 @@ function App() {
     if (!error) setRecords(rs => rs.map(r => r.id === id ? { ...r, status: decision } : r));
   };
 
+  const editRecord = async (id, updates) => {
+    const { error } = await window.db.from("expenses").update(updates).eq("id", id);
+    if (!error) setRecords(rs => rs.map(r => r.id === id ? { ...r, ...updates } : r));
+    return { error };
+  };
+
   if (loading) return <LoadingScreen />;
 
   const [t1, t2] = TITLES[route];
@@ -117,7 +123,7 @@ function App() {
         <div className="content">
           {route === "dashboard" && <Dashboard records={records} period={period} setPeriod={setPeriod} goCreate={() => go("create")} />}
           {route === "create" && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} />}
-          {route === "records" && <RecordsTable records={records} goCreate={() => go("create")} />}
+          {route === "records" && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} />}
           {route === "approvals" && <Approvals records={records} onAct={actOn} />}
           {route === "settings" && <Settings />}
         </div>
