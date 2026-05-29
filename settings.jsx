@@ -18,89 +18,81 @@ function Toggle({ on, onClick }) {
   );
 }
 
-function AddUserModal({ onClose, onAdd }) {
-  const [name, setName]   = useState("");
-  const [email, setEmail] = useState("");
-  const [dept, setDept]   = useState("");
-  const [role, setRole]   = useState("staff");
-  const valid = name.trim() && email.includes("@") && dept.trim();
-  const submit = e => {
-    e.preventDefault();
-    if (!valid) return;
-    onAdd({ name: name.trim(), email: email.trim(), dept: dept.trim(), role, active: true });
-    onClose();
+function InviteModal({ onClose }) {
+  const url = window.location.origin + window.location.pathname;
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   };
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>เพิ่มผู้ใช้งานใหม่</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>เชิญผู้ใช้งานใหม่</div>
           <button className="icon-btn ml-auto" onClick={onClose}><I.x /></button>
         </div>
-        <form onSubmit={submit} style={{ padding: 24 }} className="col gap-8">
-          <div className="field">
-            <label>ชื่อ-นามสกุล <span className="req">*</span></label>
-            <input className="inp" placeholder="เช่น สมชาย ใจดี" value={name} onChange={e => setName(e.target.value)} autoFocus />
+        <div style={{ padding: 24 }}>
+          <div style={{ background: "var(--brand-50)", borderRadius: 14, padding: 18, marginBottom: 20, textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 8 }}>แชร์ลิงค์นี้ให้พนักงานสมัครสมาชิกด้วยตัวเอง</div>
+            <div className="num" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--brand)", wordBreak: "break-all" }}>{url}</div>
           </div>
-          <div className="field">
-            <label>อีเมล <span className="req">*</span></label>
-            <input className="inp" type="email" placeholder="name@highleaf.co.th" value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>แผนก <span className="req">*</span></label>
-            <input className="inp" placeholder="เช่น การตลาด, ปฏิบัติการ" value={dept} onChange={e => setDept(e.target.value)} />
-          </div>
-          <div className="field" style={{ marginBottom: 24 }}>
-            <label>สิทธิ์การใช้งาน</label>
-            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-              {Object.entries(ROLES).map(([k, v]) => (
-                <button key={k} type="button" onClick={() => setRole(k)} style={{
-                  flex: 1, padding: "10px 0", borderRadius: 12, fontWeight: 600, fontSize: 13.5,
-                  border: "1.6px solid " + (role === k ? "var(--brand)" : "var(--line)"),
-                  background: role === k ? "var(--brand-50)" : "var(--surface)",
-                  color: role === k ? "var(--brand)" : "var(--ink-2)", transition: ".18s"
-                }}>{v.th}</button>
-              ))}
-            </div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginBottom: 20, lineHeight: 1.7 }}>
+            <b>ขั้นตอน:</b><br />
+            1. ส่ง URL ด้านบนให้พนักงาน<br />
+            2. พนักงานกด <b>สมัครสมาชิก</b> กรอกชื่อ แผนก และรหัสผ่าน<br />
+            3. หลังสมัครแล้วจะปรากฏในตาราง — admin เปลี่ยนสิทธิ์ได้
           </div>
           <div className="flex gap-12">
-            <button type="submit" className="btn-primary" disabled={!valid} style={{ opacity: valid ? 1 : .5 }}>
-              <I.user />เพิ่มผู้ใช้งาน
+            <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={copy}>
+              {copied ? <><I.check />คัดลอกแล้ว!</> : <><I.upload style={{ transform: "rotate(90deg)" }} />คัดลอก URL</>}
             </button>
-            <button type="button" className="btn-ghost" onClick={onClose}>ยกเลิก</button>
+            <button className="btn-ghost" onClick={onClose}>ปิด</button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
 }
 
-function Settings() {
+function Settings({ profile }) {
   const toast = useToast();
   const [tab, setTab] = useState("users");
   const [toggles, setToggles] = useState({ autoApprove: false, dailyReport: true, slipRequired: true, lineNotify: true });
   const [limit, setLimit] = useState("5000");
-  const [showAddUser, setShowAddUser] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const tog = k => setToggles(t => ({ ...t, [k]: !t[k] }));
 
-  const [users, setUsers] = useState([
-    { name: "ฟร้อง", dept: "การตลาด", role: "admin", email: "storylooknung@gmail.com", active: true },
-    ...PEOPLE.map((p, i) => ({
-      ...p, role: i === 0 || i === 1 ? "approver" : "staff",
-      email: ["siri","thanakorn","paweena","anucha","kittipong","napat","weeraphat"][i] + "@highleaf.co.th",
-      active: i !== 6,
-    }))
-  ]);
+  // โหลดจาก user_profiles จริง
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
-  const addUser = u => {
-    setUsers(prev => [...prev, u]);
-    toast("เพิ่มผู้ใช้งาน " + u.name + " แล้ว", "ok");
+  useEffect(() => {
+    window.db.from("user_profiles")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error("[Settings]", error.message);
+        setUsers(data || []);
+        setLoadingUsers(false);
+      });
+  }, []);
+
+  // Soft-delete: ตั้ง active=false (ไม่ลบข้อมูลจริง เพื่อความปลอดภัย)
+  const deleteUser = async u => {
+    if (u.role === "admin") { toast("ไม่สามารถปิดใช้งานผู้ดูแลระบบได้", "warn"); return; }
+    const { error } = await window.db.from("user_profiles").update({ active: false }).eq("id", u.id);
+    if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+    setUsers(prev => prev.map(x => x.id === u.id ? { ...x, active: false } : x));
+    toast("ปิดใช้งาน " + u.name + " แล้ว", "warn");
   };
 
-  const deleteUser = u => {
-    if (u.role === "admin") { toast("ไม่สามารถลบผู้ดูแลระบบได้", "warn"); return; }
-    setUsers(prev => prev.filter(x => x.email !== u.email));
-    toast("ลบ " + u.name + " ออกจากระบบแล้ว", "warn");
+  // เปลี่ยน role ใน DB
+  const changeRole = async (u, newRole) => {
+    if (u.id === profile?.id && newRole !== "admin") { toast("ไม่สามารถลดสิทธิ์ตัวเองได้", "warn"); return; }
+    const { error } = await window.db.from("user_profiles").update({ role: newRole }).eq("id", u.id);
+    if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+    setUsers(prev => prev.map(x => x.id === u.id ? { ...x, role: newRole } : x));
+    toast("เปลี่ยนสิทธิ์ " + u.name + " เป็น " + ROLES[newRole].th, "ok");
   };
 
   return (
@@ -114,38 +106,56 @@ function Settings() {
       {tab === "users" && (
         <div className="card" style={{ overflow: "hidden" }}>
           <div className="flex items-center card-pad" style={{ padding: 18, borderBottom: "1px solid var(--line)" }}>
-            <div><h2 style={{ fontSize: 16, fontWeight: 700 }}>สมาชิกทีม</h2>
-              <span className="sub" style={{ fontSize: 13, color: "var(--ink-3)" }}>{users.length} คน</span></div>
-            <button className="btn-primary ml-auto" onClick={() => setShowAddUser(true)}><I.plus />เพิ่มผู้ใช้งาน</button>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700 }}>สมาชิกทีม</h2>
+              <span style={{ fontSize: 13, color: "var(--ink-3)" }}>{loadingUsers ? "กำลังโหลด…" : users.length + " คน"}</span>
+            </div>
+            {profile?.role === "admin" && (
+              <button className="btn-primary ml-auto" onClick={() => setShowInvite(true)}><I.plus />เพิ่มผู้ใช้งาน</button>
+            )}
           </div>
           <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>ชื่อ</th><th className="hide-sm">อีเมล</th><th>แผนก</th><th>สิทธิ์</th><th className="ta-r">สถานะ</th><th></th></tr></thead>
-              <tbody>
-                {users.map((u, i) => (
-                  <tr key={u.email} style={{ animation: `cardUp .4s ${i * 25}ms both` }}>
-                    <td><div className="who"><Avatar name={u.name} /><div className="nm">{u.name}</div></div></td>
-                    <td className="hide-sm num" style={{ color: "var(--ink-2)", fontSize: 13 }}>{u.email}</td>
-                    <td style={{ color: "var(--ink-2)", fontSize: 13.5 }}>{u.dept}</td>
-                    <td><span className={"badge " + ROLES[u.role].cls}><span className="bd"></span>{ROLES[u.role].th}</span></td>
-                    <td className="ta-r">
-                      <span style={{ fontSize: 13, fontWeight: 600, color: u.active ? "var(--green)" : "var(--ink-3)" }}>
-                        {u.active ? "● ใช้งาน" : "○ ปิดใช้งาน"}
-                      </span>
-                    </td>
-                    <td className="ta-r" style={{ width: 44 }}>
-                      {u.role !== "admin" && (
-                        <button className="icon-btn" title="ลบผู้ใช้งาน"
-                          style={{ color: "var(--red)" }}
-                          onClick={() => deleteUser(u)}>
-                          <I.trash />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {loadingUsers ? (
+              <div style={{ padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>กำลังโหลดรายชื่อ…</div>
+            ) : users.length === 0 ? (
+              <div className="empty"><div className="ei"><I.user /></div><div>ยังไม่มีผู้ใช้งาน</div></div>
+            ) : (
+              <table className="tbl">
+                <thead><tr><th>ชื่อ</th><th className="hide-sm">อีเมล</th><th>แผนก</th><th>สิทธิ์</th><th className="ta-r">สถานะ</th><th></th></tr></thead>
+                <tbody>
+                  {users.map((u, i) => (
+                    <tr key={u.id} style={{ animation: `cardUp .4s ${i * 25}ms both`, opacity: u.active ? 1 : .5 }}>
+                      <td><div className="who"><Avatar name={u.name || "?"} /><div className="nm">{u.name || "(ไม่มีชื่อ)"}</div></div></td>
+                      <td className="hide-sm num" style={{ color: "var(--ink-2)", fontSize: 13 }}>{u.email || "—"}</td>
+                      <td style={{ color: "var(--ink-2)", fontSize: 13.5 }}>{u.dept || "—"}</td>
+                      <td>
+                        {profile?.role === "admin" && u.id !== profile?.id ? (
+                          <select className="sel" value={u.role}
+                            style={{ height: 34, fontSize: 13, padding: "0 10px", width: "auto", minWidth: 120 }}
+                            onChange={e => changeRole(u, e.target.value)}>
+                            {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v.th}</option>)}
+                          </select>
+                        ) : (
+                          <span className={"badge " + ROLES[u.role]?.cls}><span className="bd"></span>{ROLES[u.role]?.th}</span>
+                        )}
+                      </td>
+                      <td className="ta-r">
+                        <span style={{ fontSize: 13, fontWeight: 600, color: u.active ? "var(--green)" : "var(--ink-3)" }}>
+                          {u.active ? "● ใช้งาน" : "○ ปิดใช้งาน"}
+                        </span>
+                      </td>
+                      <td className="ta-r" style={{ width: 44 }}>
+                        {profile?.role === "admin" && u.role !== "admin" && u.active && (
+                          <button className="icon-btn" title="ปิดใช้งาน" style={{ color: "var(--red)" }} onClick={() => deleteUser(u)}>
+                            <I.trash />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
@@ -201,7 +211,7 @@ function Settings() {
         </div>
       )}
 
-      {showAddUser && <AddUserModal onClose={() => setShowAddUser(false)} onAdd={addUser} />}
+      {showInvite && <InviteModal onClose={() => setShowInvite(false)} />}
     </div>
   );
 }

@@ -61,6 +61,7 @@ const CAT_KEYS = Object.keys(CATS);
 const THB = n => "฿" + Math.round(n).toLocaleString("en-US");
 const fmtFull = n => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const THAI_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+const todayIso = () => new Date().toISOString().slice(0, 10);
 function thDate(iso, withYear) {
   const d = new Date(iso);
   return d.getDate() + " " + THAI_MONTHS[d.getMonth()] + (withYear ? " " + (d.getFullYear() + 543) : "");
@@ -73,6 +74,66 @@ const STATUS = {
 const AV_COLORS = ["#1B6B3A","#2D6CB5","#C0852A","#7A52B3","#BF4530","#1F8A4C"];
 const avColor = name => AV_COLORS[(name.charCodeAt(0) + (name.charCodeAt(2) || 0)) % AV_COLORS.length];
 const initials = name => name.replace(/^(นาย|นางสาว|นาง|คุณ)\s*/, "").trim().charAt(0);
+const isManager = profile => ["admin", "approver"].includes(profile?.role);
+const canEditExpense = (profile, rec) => {
+  if (profile?.role === "admin") return true;
+  if (profile?.role === "approver" && rec.status === "pending") return true;
+  return rec.status === "pending" && rec.submitted_by_id === profile?.id;
+};
+const csvCell = v => {
+  const s = (v ?? "").toString().replace(/\r?\n/g, " ");
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+function downloadCsv(filename, rows) {
+  const csv = "\uFEFF" + rows.map(r => r.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function downloadXlsx(filename, rows) {
+  const [header, ...data] = rows;
+  const ws = window.XLSX.utils.aoa_to_sheet([header, ...data]);
+  // ปรับความกว้าง column อัตโนมัติ
+  ws["!cols"] = header.map((_, ci) => ({
+    wch: Math.max(header[ci]?.toString().length || 10,
+      ...data.map(r => (r[ci]?.toString().length || 0))) + 2
+  }));
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, "รายการเบิกเงิน");
+  window.XLSX.writeFile(wb, filename);
+}
+function useSlipUrl(rec) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setUrl(null);
+    if (!rec) return;
+    if (rec.slip_url) {
+      setUrl(rec.slip_url);
+      return;
+    }
+    const local = localStorage.getItem("slip_" + rec.id);
+    if (local) {
+      setUrl(local);
+      return;
+    }
+    if (rec.slip_path) {
+      window.db.storage.from("slips").createSignedUrl(rec.slip_path, 60 * 60)
+        .then(({ data, error }) => {
+          if (error) console.warn("[Storage] signed URL failed:", error.message);
+          if (alive) setUrl(data?.signedUrl || null);
+        });
+    }
+    return () => { alive = false; };
+  }, [rec?.id, rec?.slip_path, rec?.slip_url]);
+  return url;
+}
 
 /* ---------- People ---------- */
 const PEOPLE = [
@@ -199,6 +260,6 @@ const useToast = () => React.useContext(ToastCtx);
 Object.assign(window, {
   useState, useEffect, useRef, useMemo, useCallback,
   Ic, I, CATS, CAT_KEYS, THB, fmtFull, thDate, THAI_MONTHS, STATUS,
-  avColor, initials, PEOPLE, genRecords, ReceiptSVG,
+  todayIso, avColor, initials, isManager, canEditExpense, downloadCsv, downloadXlsx, useSlipUrl, PEOPLE, genRecords, ReceiptSVG,
   Badge, CatChip, Avatar, useCountUp, ToastProvider, useToast,
 });

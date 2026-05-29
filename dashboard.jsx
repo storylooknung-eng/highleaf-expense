@@ -113,11 +113,12 @@ function Dashboard({ records, period, setPeriod, goCreate }) {
   const [run, setRun] = useState(false);
   useEffect(() => { const t = setTimeout(() => setRun(true), 80); return () => clearTimeout(t); }, []);
 
-  const today = new Date("2026-05-29");
+  const todayKey = todayIso();
+  const today = new Date(todayKey);
   const inPeriod = (iso, days) => (today - new Date(iso)) / 86400000 < days;
 
   const approved = records.filter(r => r.status === "approved");
-  const sumDay = approved.filter(r => r.date === "2026-05-29").reduce((s, r) => s + r.amount, 0)
+  const sumDay = approved.filter(r => r.date === todayKey).reduce((s, r) => s + r.amount, 0)
     || approved.filter(r => inPeriod(r.date, 1.5)).reduce((s, r) => s + r.amount, 0);
   const sumWeek = approved.filter(r => inPeriod(r.date, 7)).reduce((s, r) => s + r.amount, 0);
   const sumMonth = approved.filter(r => inPeriod(r.date, 30)).reduce((s, r) => s + r.amount, 0);
@@ -176,7 +177,7 @@ function Dashboard({ records, period, setPeriod, goCreate }) {
           ))}
         </div>
         <span style={{ color: "var(--ink-3)", fontSize: 13.5 }} className="hide-sm">
-          ข้อมูล ณ วันที่ {thDate("2026-05-29", true)}
+          ข้อมูล ณ วันที่ {thDate(todayKey, true)}
         </span>
         <button className="btn-primary ml-auto" onClick={goCreate}><I.plus />สร้างรายการเบิก</button>
       </div>

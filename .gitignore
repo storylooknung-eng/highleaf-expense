@@ -23,3 +23,5 @@ dist/
 
 # Supabase service_role key (ถ้ามีไฟล์แยก)
 supabase-service.js
+
+.vercel

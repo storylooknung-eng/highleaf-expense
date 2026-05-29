@@ -2,7 +2,7 @@
 
 function SlipModal({ rec, onClose }) {
   if (!rec) return null;
-  const slipImg = localStorage.getItem("slip_" + rec.id);
+  const slipImg = useSlipUrl(rec);
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
@@ -31,6 +31,17 @@ function SlipModal({ rec, onClose }) {
           <PreviewRow k="สถานะ" v={<Badge status={rec.status} />} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function SlipThumb({ rec, onClick }) {
+  const slipImg = useSlipUrl(rec);
+  return (
+    <div className="slip-thumb" onClick={onClick} style={{ cursor: "pointer" }}>
+      {slipImg
+        ? <img src={slipImg} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        : <ReceiptSVG hue={rec.hue} className="rcpt" />}
     </div>
   );
 }
@@ -113,7 +124,7 @@ function EditModal({ rec, onClose, onSave }) {
   );
 }
 
-function RecordsTable({ records, goCreate, onEdit }) {
+function RecordsTable({ records, goCreate, onEdit, profile }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
@@ -142,6 +153,22 @@ function RecordsTable({ records, goCreate, onEdit }) {
   const pages = Math.max(1, Math.ceil(filtered.length / PER));
   const shown = filtered.slice((page - 1) * PER, page * PER);
   const total = filtered.reduce((s, r) => s + r.amount, 0);
+  const [showExport, setShowExport] = useState(false);
+  const buildRows = () => [
+    ["รหัส", "วันที่", "ผู้เบิก", "แผนก", "หมวดหมู่", "จำนวนเงิน (บาท)", "สถานะ", "รายละเอียด", "ผู้อนุมัติ", "ลิงก์สลิป"],
+    ...filtered.map(r => [
+      r.id, r.date, r.person, r.dept || "", CATS[r.cat]?.name || r.cat,
+      Number(r.amount || 0), STATUS[r.status]?.th || r.status, r.note || "",
+      r.approved_by || "", r.slip_url || ""
+    ])
+  ];
+  const doExport = fmt => {
+    const rows = buildRows();
+    const fname = "highleaf-expenses-" + todayIso();
+    if (fmt === "xlsx") downloadXlsx(fname + ".xlsx", rows);
+    else downloadCsv(fname + ".csv", rows);
+    setShowExport(false);
+  };
 
   const th = (k, label, right) => (
     <th onClick={() => setSort(s => ({ k, dir: s.k === k ? -s.dir : -1 }))}
@@ -179,7 +206,29 @@ function RecordsTable({ records, goCreate, onEdit }) {
       <div className="flex items-center wrap gap-16" style={{ marginBottom: 16, padding: "0 4px" }}>
         <span style={{ fontSize: 14, color: "var(--ink-2)" }}>พบ <b className="num">{filtered.length}</b> รายการ</span>
         <span style={{ fontSize: 14, color: "var(--ink-2)" }}>รวมมูลค่า <b className="num" style={{ color: "var(--brand)" }}>{THB(total)}</b></span>
-        <button className="btn-ghost ml-auto" onClick={() => {}}><I.download />ส่งออก Excel</button>
+        <div style={{ position: "relative", marginLeft: "auto" }}>
+          <button className="btn-ghost" onClick={() => setShowExport(v => !v)}>
+            <I.download />ส่งออก<I.chevron style={{ width: 14, height: 14, marginLeft: 2 }} />
+          </button>
+          {showExport && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 50,
+              background: "var(--surface)", border: "1px solid var(--line)",
+              borderRadius: 13, boxShadow: "var(--sh-2)", minWidth: 160, overflow: "hidden"
+            }}>
+              {[["xlsx","📊 Excel (.xlsx)"],["csv","📄 CSV (.csv)"]].map(([fmt, label]) => (
+                <button key={fmt} onClick={() => doExport(fmt)} style={{
+                  display: "block", width: "100%", textAlign: "left",
+                  padding: "11px 16px", fontSize: 14, fontWeight: 500, color: "var(--ink)"
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--brand-50)"}
+                  onMouseLeave={e => e.currentTarget.style.background = ""}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="btn-primary" onClick={goCreate}><I.plus />สร้างรายการ</button>
       </div>
 
@@ -203,11 +252,7 @@ function RecordsTable({ records, goCreate, onEdit }) {
               {shown.map((r, i) => (
                 <tr key={r.id} style={{ animation: `cardUp .4s ${i * 30}ms both` }}>
                   <td style={{ width: 54 }}>
-                    <div className="slip-thumb" onClick={() => setSlip(r)} style={{ cursor: "pointer" }}>
-                      {localStorage.getItem("slip_" + r.id)
-                        ? <img src={localStorage.getItem("slip_" + r.id)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        : <ReceiptSVG hue={r.hue} className="rcpt" />}
-                    </div>
+                    <SlipThumb rec={r} onClick={() => setSlip(r)} />
                   </td>
                   <td><span className="num" style={{ fontSize: 13, color: "var(--ink-2)", fontWeight: 600 }}>{r.id}</span></td>
                   <td>
@@ -222,7 +267,7 @@ function RecordsTable({ records, goCreate, onEdit }) {
                   <td className="ta-r" style={{ width: 80 }}>
                     <div className="flex" style={{ justifyContent: "flex-end", gap: 4 }}>
                       <button className="icon-btn" onClick={() => setSlip(r)} title="ดูสลิป"><I.eye /></button>
-                      {onEdit && <button className="icon-btn" onClick={() => setEditing(r)} title="แก้ไข"><I.edit /></button>}
+                      {onEdit && canEditExpense(profile, r) && <button className="icon-btn" onClick={() => setEditing(r)} title="แก้ไข"><I.edit /></button>}
                     </div>
                   </td>
                 </tr>
@@ -259,4 +304,4 @@ function RecordsTable({ records, goCreate, onEdit }) {
   );
 }
 
-Object.assign(window, { RecordsTable, SlipModal });
+Object.assign(window, { RecordsTable, SlipModal, SlipThumb });

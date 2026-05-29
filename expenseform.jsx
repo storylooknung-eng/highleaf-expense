@@ -27,10 +27,11 @@ function Dropzone({ files, setFiles }) {
   const inputRef = useRef(null);
   const addFiles = list => {
     Array.from(list).forEach(f => {
+      if (f.size > 10 * 1024 * 1024) return;
       const id = Math.random();
-      const entry = { id, name: f.name, size: (f.size / 1024).toFixed(0) + " KB", hue: Math.floor(Math.random() * 360), dataUrl: null };
+      const entry = { id, name: f.name, size: (f.size / 1024).toFixed(0) + " KB", hue: Math.floor(Math.random() * 360), dataUrl: null, fileObj: f };
       setFiles(prev => [...prev, entry]);
-      if (f.type && f.type.startsWith("image/")) {
+      if (f.type && (f.type.startsWith("image/") || f.type === "application/pdf")) {
         const reader = new FileReader();
         reader.onload = e => setFiles(prev => prev.map(x => x.id === id ? { ...x, dataUrl: e.target.result } : x));
         reader.readAsDataURL(f);
@@ -73,11 +74,12 @@ function Dropzone({ files, setFiles }) {
   );
 }
 
-function ExpenseForm({ onSubmit, goList }) {
+function ExpenseForm({ onSubmit, goList, profile }) {
   const toast = useToast();
-  const [date, setDate] = useState("2026-05-29");
-  const [person, setPerson] = useState(PEOPLE[0].name);
-  const [dept, setDept] = useState(PEOPLE[0].dept);
+  const today = todayIso();
+  const [date, setDate] = useState(today);
+  const [person, setPerson] = useState(profile?.name || PEOPLE[0].name);
+  const [dept, setDept]     = useState(profile?.dept || PEOPLE[0].dept);
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState("travel");
   const [note, setNote] = useState("");
@@ -95,20 +97,42 @@ function ExpenseForm({ onSubmit, goList }) {
     if (!valid) { toast("กรุณากรอกจำนวนเงินและข้อมูลให้ครบ", "warn"); return; }
     if (files.length === 0) { toast("กรุณาแนบไฟล์สลิป/ใบเสร็จ", "warn"); return; }
     setSubmitting(true);
-    const newId = "EXP-" + Math.floor(1000 + Math.random() * 9000);
+    const newId = "EXP-" + Date.now().toString().slice(-8);
+
+    // ─── อัปโหลด slip ไป Supabase Storage ───
+    let slip_path = null;
+    let slip_url = null;
+    const slipFile = files.find(f => f.fileObj);
+    if (slipFile?.fileObj) {
+      const ext  = slipFile.fileObj.name.split(".").pop() || "jpg";
+      const path = (profile?.id || "anonymous") + "/" + newId + "." + ext.toLowerCase();
+      const { error: upErr } = await window.db.storage
+        .from("slips").upload(path, slipFile.fileObj, { upsert: true });
+      if (!upErr) {
+        slip_path = path;
+        console.log("[Storage] slip uploaded:", slip_path);
+      } else {
+        console.warn("[Storage] upload failed:", upErr.message);
+      }
+      // fallback: เก็บใน localStorage ด้วยเสมอ (ใช้ดูออฟไลน์)
+      if (slipFile.dataUrl) {
+        try { localStorage.setItem("slip_" + newId, slipFile.dataUrl); } catch (_) {}
+      }
+    }
+
     const { error } = await onSubmit({
-      id: newId,
-      date, person, dept, amount: Number(amount), cat,
-      note: note || CATS[cat].name, status: "pending",
+      id: newId, date, person, dept,
+      amount: Number(amount), cat,
+      note: note || CATS[cat].name,
+      status: "pending",
       hue: files[0]?.hue || 140,
+      slip_path,
+      slip_url,
+      submitted_by: profile?.name || person,
+      submitted_by_id: profile?.id || null,
     });
     setSubmitting(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
-    // บันทึก slip จริงไว้ดูในโมดัล
-    const slipWithData = files.find(f => f.dataUrl);
-    if (slipWithData) {
-      try { localStorage.setItem("slip_" + newId, slipWithData.dataUrl); } catch (_) {}
-    }
     toast("ส่งรายการเบิกเข้าระบบแล้ว · รอการอนุมัติ", "ok");
     goList();
   };

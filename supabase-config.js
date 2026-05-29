@@ -18,7 +18,7 @@ const SUPABASE_URL  = 'https://mdgxxkutyrrxwdvzjvsy.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kZ3h4a3V0eXJyeHdkdnpqdnN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMzQwNjUsImV4cCI6MjA5NTYxMDA2NX0.oeKSEAF-1rWr7tiMgKEeu8qTCXd8554fn-yfkKg_uPg';
 
 window.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-  auth: { persistSession: false },
+  auth: { persistSession: true },   // เก็บ session ใน localStorage — ไม่ต้อง login ใหม่ทุกครั้ง
 });
 
 // ตรวจสอบการเชื่อมต่อ
