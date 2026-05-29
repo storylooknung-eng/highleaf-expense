@@ -25,11 +25,15 @@ function Settings() {
   const [limit, setLimit] = useState("5000");
   const tog = k => setToggles(t => ({ ...t, [k]: !t[k] }));
 
-  const users = PEOPLE.map((p, i) => ({
-    ...p, role: i === 2 ? "admin" : i === 0 || i === 1 ? "approver" : "staff",
-    email: ["siri","thanakorn","paweena","anucha","kittipong","napat","weeraphat"][i] + "@highleaf.co.th",
-    active: i !== 6,
-  }));
+  const allUsers = [
+    { name: "ฟร้อง", dept: "การตลาด", role: "admin", email: "storylooknung@gmail.com", active: true },
+    ...PEOPLE.map((p, i) => ({
+      ...p, role: i === 0 || i === 1 ? "approver" : "staff",
+      email: ["siri","thanakorn","paweena","anucha","kittipong","napat","weeraphat"][i] + "@highleaf.co.th",
+      active: i !== 6,
+    }))
+  ];
+  const users = allUsers;
 
   return (
     <div className="page" style={{ maxWidth: 1000, margin: "0 auto" }}>

@@ -90,10 +90,10 @@ function App() {
         </nav>
 
         <div className="sb-user">
-          <span className="av">ป</span>
+          <span className="av">ฟ</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="nm">ปวีณา รัตนชัย</div>
-            <div className="rl">ผู้ดูแลระบบ · การเงิน</div>
+            <div className="nm">ฟร้อง</div>
+            <div className="rl">ผู้ดูแลระบบ · การตลาด</div>
           </div>
           <button className="icon-btn" style={{ color: "rgba(255,255,255,.7)" }} title="ออกจากระบบ"><I.logout /></button>
         </div>
