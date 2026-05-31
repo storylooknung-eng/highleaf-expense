@@ -43,22 +43,29 @@ function AuthPage() {
           .select("*", { count: "exact", head: true });
         const role = (count === 0) ? "admin" : "staff";
 
-        let { error: profileError } = await window.db.from("user_profiles").insert({
-          id: data.user.id,
-          name: name.trim(),
-          dept: dept.trim(),
-          role,
-          email: email.trim(),
-        });
-        if (profileError && role === "admin") {
-          profileError = (await window.db.from("user_profiles").insert({
-            id: data.user.id,
-            name: name.trim(),
-            dept: dept.trim(),
-            role: "staff",
-            email: email.trim(),
-          })).error;
+        // พยายาม insert พร้อม email — ถ้า column ไม่มีให้ retry โดยไม่มี email
+        const tryInsert = async (withEmail) => {
+          const payload = { id: data.user.id, name: name.trim(), dept: dept.trim(), role };
+          if (withEmail) payload.email = email.trim();
+          return window.db.from("user_profiles").insert(payload);
+        };
+
+        let { error: profileError } = await tryInsert(true);
+
+        // email column ยังไม่มี → retry ไม่ใส่ email
+        if (profileError?.message?.includes("email")) {
+          const r2 = await tryInsert(false);
+          profileError = r2.error;
         }
+
+        // admin insert ถูกบล็อกโดย policy → ลอง staff แทน (admin จะถูก set ด้วย SQL function)
+        if (profileError && role === "admin") {
+          const r3 = await tryInsert(true);
+          profileError = r3.error?.message?.includes("email")
+            ? (await tryInsert(false)).error
+            : r3.error;
+        }
+
         if (profileError) {
           setErr("สมัครสมาชิกสำเร็จ แต่สร้างโปรไฟล์ไม่สำเร็จ: " + profileError.message);
           setLoading(false);
