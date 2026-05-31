@@ -78,17 +78,13 @@ function ExpenseForm({ onSubmit, goList, profile }) {
   const toast = useToast();
   const today = todayIso();
   const [date, setDate] = useState(today);
-  const [person, setPerson] = useState(profile?.name || PEOPLE[0].name);
-  const [dept, setDept]     = useState(profile?.dept || PEOPLE[0].dept);
+  const [person, setPerson] = useState(profile?.name || "");
+  const [dept, setDept]     = useState(profile?.dept || "");
   const [amount, setAmount] = useState("");
   const [cat, setCat] = useState("travel");
   const [note, setNote] = useState("");
   const [files, setFiles] = useState([]);
 
-  const onPerson = name => {
-    setPerson(name);
-    const p = PEOPLE.find(x => x.name === name); if (p) setDept(p.dept);
-  };
 
   const [submitting, setSubmitting] = useState(false);
   const valid = amount && Number(amount) > 0 && person && date;
@@ -164,9 +160,8 @@ function ExpenseForm({ onSubmit, goList, profile }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div className="field">
               <label>ชื่อผู้เบิก <span className="req">*</span></label>
-              <select className="sel" value={person} onChange={e => onPerson(e.target.value)}>
-                {PEOPLE.map(p => <option key={p.name}>{p.name}</option>)}
-              </select>
+              <input className="inp" placeholder="ชื่อ-นามสกุล" value={person}
+                onChange={e => setPerson(e.target.value)} />
             </div>
             <div className="field">
               <label>แผนก</label>
