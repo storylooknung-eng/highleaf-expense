@@ -36,44 +36,32 @@ function AuthPage() {
       const { data, error } = await window.db.auth.signUp({ email, password });
       if (error) { setErr(error.message); setLoading(false); return; }
 
-      if (data.user) {
-        // ตรวจว่าเป็นผู้ใช้คนแรกหรือไม่ → ให้เป็น admin
+      if (data.user && data.session) {
+        // มี session ทันที (ปิด email confirmation) → สร้าง profile เลย
         const { count } = await window.db
-          .from("user_profiles")
-          .select("*", { count: "exact", head: true });
+          .from("user_profiles").select("*", { count: "exact", head: true });
         const role = (count === 0) ? "admin" : "staff";
 
-        // พยายาม insert พร้อม email — ถ้า column ไม่มีให้ retry โดยไม่มี email
-        const tryInsert = async (withEmail) => {
-          const payload = { id: data.user.id, name: name.trim(), dept: dept.trim(), role };
-          if (withEmail) payload.email = email.trim();
-          return window.db.from("user_profiles").insert(payload);
-        };
+        const tryInsert = async (payload) =>
+          window.db.from("user_profiles").insert(payload);
 
-        let { error: profileError } = await tryInsert(true);
+        const base = { id: data.user.id, name: name.trim(), dept: dept.trim(), role };
+        let { error: pe } = await tryInsert({ ...base, email: email.trim() });
+        if (pe?.message?.includes("email")) pe = (await tryInsert(base)).error;
+        if (pe?.message?.includes("security") && role === "admin")
+          pe = (await tryInsert({ ...base, role: "staff" })).error;
 
-        // email column ยังไม่มี → retry ไม่ใส่ email
-        if (profileError?.message?.includes("email")) {
-          const r2 = await tryInsert(false);
-          profileError = r2.error;
+        if (pe) {
+          setErr("สมัครสมาชิกสำเร็จ แต่สร้างโปรไฟล์ไม่สำเร็จ: " + pe.message);
+          setLoading(false); return;
         }
-
-        // admin insert ถูกบล็อกโดย policy → ลอง staff แทน (admin จะถูก set ด้วย SQL function)
-        if (profileError && role === "admin") {
-          const r3 = await tryInsert(true);
-          profileError = r3.error?.message?.includes("email")
-            ? (await tryInsert(false)).error
-            : r3.error;
-        }
-
-        if (profileError) {
-          setErr("สมัครสมาชิกสำเร็จ แต่สร้างโปรไฟล์ไม่สำเร็จ: " + profileError.message);
-          setLoading(false);
-          return;
-        }
+        // auth state change จะ redirect เอง
+      } else if (data.user && !data.session) {
+        // ต้องยืนยันอีเมลก่อน — profile จะสร้างตอน login ครั้งแรก
+        setInfo("✅ สมัครสมาชิกแล้ว! กรุณาตรวจสอบอีเมล " + email + " เพื่อยืนยันบัญชี แล้วกลับมา Login");
+        setLoading(false); return;
       }
 
-      setInfo("สมัครสมาชิกแล้ว! " + (data.session ? "" : "กรุณายืนยันอีเมลของคุณก่อนเข้าสู่ระบบ"));
       setLoading(false);
     }
   };

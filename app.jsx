@@ -90,30 +90,38 @@ function App() {
       return;
     }
     if (!data && uid) {
+      // user ยืนยันอีเมลแล้วแต่ยังไม่มี profile → สร้างตอน login ครั้งแรก
       const fallbackName =
         authUser?.user_metadata?.full_name ||
         authUser?.user_metadata?.name ||
         authUser?.email?.split("@")?.[0] ||
         "ผู้ใช้งาน";
-      const payload = {
-        id: uid,
-        email: authUser?.email || "",
-        name: fallbackName,
-        dept: "",
-        role: "staff",
-        active: true,
-      };
-      const { data: created, error: createErr } = await window.db
-        .from("user_profiles")
-        .insert(payload)
-        .select("*")
-        .single();
-      if (createErr) {
-        console.error("[Profile create]", createErr.message);
-        setProfile(payload);
-      } else {
-        setProfile(created);
+
+      // ตรวจว่าเป็น user คนแรกหรือไม่ → admin
+      const { count } = await window.db
+        .from("user_profiles").select("*", { count: "exact", head: true });
+      const role = (count === 0) ? "admin" : "staff";
+
+      const base = { id: uid, name: fallbackName, dept: "", role, active: true };
+
+      // ลอง insert พร้อม email ก่อน ถ้า column ไม่มี retry โดยไม่ใส่ email
+      let { data: created, error: createErr } = await window.db
+        .from("user_profiles").insert({ ...base, email: authUser?.email || "" })
+        .select("*").single();
+
+      if (createErr?.message?.includes("email")) {
+        const r2 = await window.db.from("user_profiles").insert(base).select("*").single();
+        created = r2.data; createErr = r2.error;
       }
+      // ถ้า RLS บล็อก admin → fallback staff
+      if (createErr?.message?.includes("security") && role === "admin") {
+        const r3 = await window.db.from("user_profiles")
+          .insert({ ...base, role: "staff" }).select("*").single();
+        created = r3.data; createErr = r3.error;
+      }
+
+      if (createErr) console.error("[Profile create]", createErr.message);
+      setProfile(created || base);
       setAuthLoading(false);
       return;
     }
