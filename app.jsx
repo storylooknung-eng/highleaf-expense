@@ -44,6 +44,19 @@ function App() {
   const [records, setRecords] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+
+  // ─── Company settings (localStorage) ───
+  const [appSettings, setAppSettingsRaw] = useState(() => {
+    try {
+      const s = localStorage.getItem("hl_settings");
+      return s ? JSON.parse(s) : { autoApprove: false, autoApproveLimit: 5000, slipRequired: true, dailyReport: true, lineNotify: true };
+    } catch { return { autoApprove: false, autoApproveLimit: 5000, slipRequired: true, dailyReport: true, lineNotify: true }; }
+  });
+  const setAppSettings = val => {
+    const next = typeof val === "function" ? val(appSettings) : val;
+    setAppSettingsRaw(next);
+    try { localStorage.setItem("hl_settings", JSON.stringify(next)); } catch (_) {}
+  };
   const canManage = isManager(profile);
   const pendingCount = records.filter(r => r.status === "pending").length;
   const visibleNav = NAV.filter(n => {
@@ -234,10 +247,10 @@ function App() {
 
         <div className="content">
           {route === "dashboard" && <Dashboard records={records} period={period} setPeriod={setPeriod} goCreate={() => go("create")} />}
-          {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} />}
+          {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} appSettings={appSettings} />}
           {route === "records"   && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} onDelete={deleteRecord} profile={profile} />}
           {route === "approvals" && canManage && <Approvals records={records} onAct={actOn} />}
-          {route === "settings"  && profile?.role === "admin" && <Settings profile={profile} />}
+          {route === "settings"  && profile?.role === "admin" && <Settings profile={profile} appSettings={appSettings} setAppSettings={setAppSettings} />}
         </div>
       </div>
     </div>

@@ -74,7 +74,7 @@ function Dropzone({ files, setFiles }) {
   );
 }
 
-function ExpenseForm({ onSubmit, goList, profile }) {
+function ExpenseForm({ onSubmit, goList, profile, appSettings }) {
   const toast = useToast();
   const today = todayIso();
   const [date, setDate] = useState(today);
@@ -116,16 +116,24 @@ function ExpenseForm({ onSubmit, goList, profile }) {
       }
     }
 
+    // ตรวจ auto-approve
+    const amt = Number(amount);
+    const autoOk = appSettings?.autoApprove && amt < Number(appSettings?.autoApproveLimit || 5000);
+    const status = autoOk ? "approved" : "pending";
+    const approvedFields = autoOk
+      ? { approved_by: "ระบบ (อนุมัติอัตโนมัติ)", approved_at: new Date().toISOString() }
+      : {};
+
     const { error } = await onSubmit({
       id: newId, date, person, dept,
-      amount: Number(amount), cat,
+      amount: amt, cat,
       note: note || CATS[cat].name,
-      status: "pending",
+      status,
       hue: files[0]?.hue || 140,
-      slip_path,
-      slip_url,
+      slip_path, slip_url,
       submitted_by: profile?.name || person,
       submitted_by_id: profile?.id || null,
+      ...approvedFields,
     });
     setSubmitting(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
@@ -141,7 +149,7 @@ function ExpenseForm({ onSubmit, goList, profile }) {
       }),
     }).catch(() => {});
 
-    toast("ส่งรายการเบิกเข้าระบบแล้ว · รอการอนุมัติ", "ok");
+    toast(autoOk ? "✅ อนุมัติอัตโนมัติแล้ว (ยอดต่ำกว่า ฿" + Number(appSettings?.autoApproveLimit||5000).toLocaleString() + ")" : "ส่งรายการเบิกเข้าระบบแล้ว · รอการอนุมัติ", "ok");
     goList();
   };
 

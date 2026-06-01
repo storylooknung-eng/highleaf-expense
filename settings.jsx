@@ -54,13 +54,27 @@ function InviteModal({ onClose }) {
   );
 }
 
-function Settings({ profile }) {
+function Settings({ profile, appSettings, setAppSettings }) {
   const toast = useToast();
   const [tab, setTab] = useState("users");
-  const [toggles, setToggles] = useState({ autoApprove: false, dailyReport: true, slipRequired: true, lineNotify: true });
-  const [limit, setLimit] = useState("5000");
+  const [toggles, setTogglesRaw] = useState({
+    autoApprove:  appSettings?.autoApprove  ?? false,
+    dailyReport:  appSettings?.dailyReport  ?? true,
+    slipRequired: appSettings?.slipRequired ?? true,
+    lineNotify:   appSettings?.lineNotify   ?? true,
+  });
+  const [limit, setLimitRaw] = useState(String(appSettings?.autoApproveLimit ?? 5000));
   const [showInvite, setShowInvite] = useState(false);
-  const tog = k => setToggles(t => ({ ...t, [k]: !t[k] }));
+
+  const tog = k => {
+    const next = { ...toggles, [k]: !toggles[k] };
+    setTogglesRaw(next);
+    setAppSettings?.(s => ({ ...s, [k]: next[k] }));
+  };
+  const setLimit = v => {
+    setLimitRaw(v);
+    setAppSettings?.(s => ({ ...s, autoApproveLimit: Number(v) || 0 }));
+  };
 
   // โหลดจาก user_profiles จริง
   const [users, setUsers] = useState([]);
