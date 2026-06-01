@@ -155,7 +155,7 @@ function App() {
         setRecords(data || []);
         setDataLoading(false);
       });
-  }, [user]);
+  }, [user?.id]);  // ใช้ id แทน object — ป้องกัน reload ตอน token refresh
 
   const go = r => { setRoute(r); setNavOpen(false); window.scrollTo({ top: 0 }); };
 
