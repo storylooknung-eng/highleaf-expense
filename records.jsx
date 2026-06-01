@@ -124,15 +124,24 @@ function EditModal({ rec, onClose, onSave }) {
   );
 }
 
-function RecordsTable({ records, goCreate, onEdit, profile }) {
+function RecordsTable({ records, goCreate, onEdit, onDelete, profile }) {
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState({ k: "date", dir: -1 });
   const [slip, setSlip] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
   const [page, setPage] = useState(1);
   const PER = 9;
+
+  const handleDelete = async id => {
+    const { error } = await onDelete(id);
+    if (error) toast("ลบไม่สำเร็จ: " + error.message, "warn");
+    else toast("ลบรายการแล้ว", "ok");
+    setConfirmId(null);
+  };
 
   const filtered = useMemo(() => {
     let r = records.filter(x => {
@@ -264,11 +273,24 @@ function RecordsTable({ records, goCreate, onEdit, profile }) {
                   <td style={{ color: "var(--ink-2)", fontSize: 13.5, whiteSpace: "nowrap" }}>{thDate(r.date, true)}</td>
                   <td className="ta-r"><span className="amount num">{THB(r.amount)}</span></td>
                   <td className="ta-r"><Badge status={r.status} /></td>
-                  <td className="ta-r" style={{ width: 80 }}>
-                    <div className="flex" style={{ justifyContent: "flex-end", gap: 4 }}>
-                      <button className="icon-btn" onClick={() => setSlip(r)} title="ดูสลิป"><I.eye /></button>
-                      {onEdit && canEditExpense(profile, r) && <button className="icon-btn" onClick={() => setEditing(r)} title="แก้ไข"><I.edit /></button>}
-                    </div>
+                  <td className="ta-r" style={{ width: confirmId === r.id ? 160 : 90 }}>
+                    {confirmId === r.id ? (
+                      <div className="flex" style={{ justifyContent: "flex-end", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 600, whiteSpace: "nowrap" }}>ลบแน่ใจ?</span>
+                        <button className="icon-btn" style={{ background: "var(--red-bg)", color: "var(--red)" }}
+                          onClick={() => handleDelete(r.id)} title="ยืนยันลบ"><I.check /></button>
+                        <button className="icon-btn" onClick={() => setConfirmId(null)} title="ยกเลิก"><I.x /></button>
+                      </div>
+                    ) : (
+                      <div className="flex" style={{ justifyContent: "flex-end", gap: 4 }}>
+                        <button className="icon-btn" onClick={() => setSlip(r)} title="ดูสลิป"><I.eye /></button>
+                        {onEdit && canEditExpense(profile, r) && <button className="icon-btn" onClick={() => setEditing(r)} title="แก้ไข"><I.edit /></button>}
+                        {onDelete && profile?.role === "admin" && (
+                          <button className="icon-btn" style={{ color: "var(--red)" }}
+                            onClick={() => setConfirmId(r.id)} title="ลบรายการ"><I.trash /></button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -170,6 +170,12 @@ function App() {
     return { error };
   };
 
+  const deleteRecord = async id => {
+    const { error } = await window.db.from("expenses").delete().eq("id", id);
+    if (!error) setRecords(rs => rs.filter(r => r.id !== id));
+    return { error };
+  };
+
   // ─── Render guards ───
   if (authLoading) return <LoadingScreen msg="กำลังตรวจสอบสิทธิ์…" sub="Supabase Auth" />;
   if (!user)       return <AuthPage />;
@@ -229,7 +235,7 @@ function App() {
         <div className="content">
           {route === "dashboard" && <Dashboard records={records} period={period} setPeriod={setPeriod} goCreate={() => go("create")} />}
           {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} />}
-          {route === "records"   && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} profile={profile} />}
+          {route === "records"   && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} onDelete={deleteRecord} profile={profile} />}
           {route === "approvals" && canManage && <Approvals records={records} onAct={actOn} />}
           {route === "settings"  && profile?.role === "admin" && <Settings profile={profile} />}
         </div>
