@@ -1,34 +1,133 @@
 // ============ records.jsx — slip viewer, edit modal, full table ============
 
-function SlipModal({ rec, onClose }) {
+function SlipModal({ rec, onClose, profile }) {
   if (!rec) return null;
   const slipImg = useSlipUrl(rec);
+
+  // ─── Comments ───
+  const [comments, setComments]   = useState([]);
+  const [loadingC, setLoadingC]   = useState(true);
+  const [text, setText]           = useState("");
+  const [posting, setPosting]     = useState(false);
+
+  useEffect(() => {
+    window.db.from("expense_comments")
+      .select("*").eq("expense_id", rec.id)
+      .order("created_at", { ascending: true })
+      .then(({ data }) => { setComments(data || []); setLoadingC(false); });
+  }, [rec.id]);
+
+  const postComment = async e => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setPosting(true);
+    const { data, error } = await window.db.from("expense_comments").insert({
+      expense_id: rec.id,
+      user_id:    profile?.id   || null,
+      user_name:  profile?.name || "ผู้ใช้งาน",
+      body:       text.trim(),
+    }).select().single();
+    if (!error && data) setComments(c => [...c, data]);
+    setText(""); setPosting(false);
+  };
+
+  const delComment = async id => {
+    await window.db.from("expense_comments").delete().eq("id", id);
+    setComments(c => c.filter(x => x.id !== id));
+  };
+
+  const fmtTime = iso => new Date(iso).toLocaleString("th-TH", {
+    day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+  });
+
+  const av = name => (name || "?").replace(/^(นาย|นางสาว|นาง|คุณ)\s*/, "").trim().charAt(0);
+
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
-          <div><div style={{ fontWeight: 700, fontSize: 16 }}>หลักฐานการจ่าย</div>
-            <div className="num" style={{ fontSize: 13, color: "var(--ink-3)" }}>{rec.id}</div></div>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>หลักฐานการจ่าย</div>
+            <div className="num" style={{ fontSize: 13, color: "var(--ink-3)" }}>{rec.id}</div>
+          </div>
           <button className="icon-btn ml-auto" onClick={onClose}><I.x /></button>
         </div>
-        <div style={{ padding: 24, background: "var(--surface-2)" }}>
-          <div style={{ borderRadius: 14, overflow: "hidden", boxShadow: "var(--sh-2)", background: "#fff", maxWidth: 280, margin: "0 auto" }}>
-            {slipImg
-              ? <img src={slipImg} style={{ width: "100%", display: "block", maxHeight: 400, objectFit: "contain" }} />
-              : <>
-                  <ReceiptSVG hue={rec.hue} className="rcpt" />
-                  <div style={{ padding: "10px 14px", background: "var(--brand-50)", textAlign: "center", fontSize: 12.5, color: "var(--brand)" }}>
-                    ตัวอย่างสลิป (ไม่มีไฟล์แนบ)
-                  </div>
-                </>
-            }
+
+        <div style={{ overflowY: "auto", maxHeight: "80vh" }}>
+          {/* Slip image */}
+          <div style={{ padding: "18px 22px", background: "var(--surface-2)" }}>
+            <div style={{ borderRadius: 12, overflow: "hidden", boxShadow: "var(--sh-2)", background: "#fff", maxWidth: 260, margin: "0 auto" }}>
+              {slipImg
+                ? <img src={slipImg} style={{ width: "100%", display: "block", maxHeight: 380, objectFit: "contain" }} />
+                : <>
+                    <ReceiptSVG hue={rec.hue} className="rcpt" />
+                    <div style={{ padding: "8px 12px", background: "var(--brand-50)", textAlign: "center", fontSize: 12, color: "var(--brand)" }}>
+                      ไม่มีไฟล์สลิปแนบ
+                    </div>
+                  </>}
+            </div>
           </div>
-        </div>
-        <div style={{ padding: "18px 24px" }} className="col gap-12">
-          <PreviewRow k="ผู้เบิก" v={rec.person} />
-          <PreviewRow k="หมวดหมู่" v={<CatChip cat={rec.cat} />} />
-          <PreviewRow k="จำนวนเงิน" v={<span className="num" style={{ fontWeight: 700 }}>{THB(rec.amount)}</span>} />
-          <PreviewRow k="สถานะ" v={<Badge status={rec.status} />} />
+
+          {/* Record details */}
+          <div style={{ padding: "14px 22px" }} className="col gap-10">
+            <PreviewRow k="ผู้เบิก"    v={rec.person} />
+            <PreviewRow k="หมวดหมู่"   v={<CatChip cat={rec.cat} />} />
+            <PreviewRow k="จำนวนเงิน" v={<span className="num" style={{ fontWeight: 700 }}>{THB(rec.amount)}</span>} />
+            <PreviewRow k="สถานะ"     v={<Badge status={rec.status} />} />
+          </div>
+
+          {/* Comments */}
+          <div style={{ borderTop: "1px solid var(--line)", padding: "16px 22px" }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 12 }}>
+              💬 ความคิดเห็น {comments.length > 0 && <span style={{ color: "var(--ink-3)", fontWeight: 500, fontSize: 13 }}>({comments.length})</span>}
+            </div>
+
+            {loadingC ? (
+              <div style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", padding: "12px 0" }}>กำลังโหลด…</div>
+            ) : comments.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", padding: "10px 0" }}>ยังไม่มีความคิดเห็น</div>
+            ) : (
+              <div className="col" style={{ gap: 12, marginBottom: 14 }}>
+                {comments.map(c => (
+                  <div key={c.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{
+                      width: 32, height: 32, borderRadius: 10, background: "var(--brand)", color: "#fff",
+                      display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13, flex: "none"
+                    }}>{av(c.user_name)}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13.5 }}>{c.user_name}</span>
+                        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{fmtTime(c.created_at)}</span>
+                        {(profile?.id === c.user_id || profile?.role === "admin") && (
+                          <button className="icon-btn" style={{ marginLeft: "auto", color: "var(--ink-3)", width: 24, height: 24 }}
+                            onClick={() => delComment(c.id)}><I.trash style={{ width: 13, height: 13 }} /></button>
+                        )}
+                      </div>
+                      <div style={{
+                        fontSize: 13.5, lineHeight: 1.55, background: "var(--surface-2)",
+                        padding: "8px 12px", borderRadius: "4px 12px 12px 12px", border: "1px solid var(--line)"
+                      }}>{c.body}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add comment form */}
+            <form onSubmit={postComment} style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <textarea className="inp" placeholder="เขียนความคิดเห็น…" value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(e); } }}
+                style={{ flex: 1, minHeight: 44, maxHeight: 120, resize: "vertical", fontSize: 13.5 }} />
+              <button type="submit" className="btn-primary"
+                style={{ height: 44, padding: "0 16px", flex: "none", opacity: posting || !text.trim() ? .6 : 1 }}
+                disabled={posting || !text.trim()}>
+                {posting ? "…" : <I.check />}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -320,7 +419,7 @@ function RecordsTable({ records, goCreate, onEdit, onDelete, profile }) {
         )}
       </div>
 
-      <SlipModal rec={slip} onClose={() => setSlip(null)} />
+      <SlipModal rec={slip} onClose={() => setSlip(null)} profile={profile} />
       {editing && <EditModal rec={editing} onClose={() => setEditing(null)} onSave={onEdit} />}
     </div>
   );

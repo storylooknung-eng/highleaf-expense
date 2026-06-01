@@ -24,7 +24,8 @@ function CatPicker({ value, onChange }) {
 
 function Dropzone({ files, setFiles }) {
   const [drag, setDrag] = useState(false);
-  const inputRef = useRef(null);
+  const inputRef  = useRef(null);
+  const cameraRef = useRef(null);
   const addFiles = list => {
     Array.from(list).forEach(f => {
       if (f.size > 10 * 1024 * 1024) return;
@@ -47,9 +48,21 @@ function Dropzone({ files, setFiles }) {
         onDrop={e => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); else addFiles([{ name: "slip_" + Date.now() + ".jpg", size: 1234 * 200 }]); }}>
         <div className="dz-ic"><I.upload /></div>
         <div style={{ fontWeight: 600, fontSize: 14.5 }}>ลากไฟล์สลิป/ใบเสร็จมาวางที่นี่</div>
-        <div className="hint" style={{ marginTop: 4 }}>หรือคลิกเพื่อเลือกไฟล์ · รองรับ JPG, PNG, PDF (ไม่เกิน 10MB)</div>
+        <div className="hint" style={{ marginTop: 4 }}>คลิกเพื่อเลือกไฟล์ · รองรับ JPG, PNG, PDF (ไม่เกิน 10MB)</div>
         <input ref={inputRef} type="file" multiple accept="image/*,.pdf" style={{ display: "none" }}
           onChange={e => { if (e.target.files.length) addFiles(e.target.files); }} />
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+          onChange={e => { if (e.target.files.length) addFiles(e.target.files); }} />
+        <button type="button"
+          onClick={e => { e.stopPropagation(); cameraRef.current.click(); }}
+          style={{
+            marginTop: 12, padding: "8px 18px", borderRadius: 11,
+            background: "var(--brand-50)", color: "var(--brand)",
+            fontWeight: 600, fontSize: 13.5, border: "1.5px solid var(--brand-100)",
+            display: "inline-flex", alignItems: "center", gap: 7,
+          }}>
+          📷 ถ่ายรูปสลิป (กล้อง)
+        </button>
       </div>
       {files.length > 0 && (
         <div className="dz-files">
