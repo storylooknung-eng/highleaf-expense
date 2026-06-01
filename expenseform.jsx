@@ -74,7 +74,7 @@ function Dropzone({ files, setFiles }) {
   );
 }
 
-function ExpenseForm({ onSubmit, goList, profile, appSettings }) {
+function ExpenseForm({ onSubmit, goList, profile, appSettings, onAutoApprove }) {
   const toast = useToast();
   const today = todayIso();
   const [date, setDate] = useState(today);
@@ -116,25 +116,25 @@ function ExpenseForm({ onSubmit, goList, profile, appSettings }) {
       }
     }
 
-    // ตรวจ auto-approve
     const amt = Number(amount);
     const autoOk = appSettings?.autoApprove && amt < Number(appSettings?.autoApproveLimit || 5000);
-    const status = autoOk ? "approved" : "pending";
-    const approvedFields = autoOk
-      ? { approved_by: "ระบบ (อนุมัติอัตโนมัติ)", approved_at: new Date().toISOString() }
-      : {};
 
+    // INSERT ต้องเป็น pending เสมอ (RLS policy กำหนด)
     const { error } = await onSubmit({
       id: newId, date, person, dept,
       amount: amt, cat,
       note: note || CATS[cat].name,
-      status,
+      status: "pending",
       hue: files[0]?.hue || 140,
       slip_path, slip_url,
       submitted_by: profile?.name || person,
       submitted_by_id: profile?.id || null,
-      ...approvedFields,
     });
+
+    // ถ้า auto-approve → UPDATE แยกขั้นตอนหลัง insert สำเร็จ
+    if (!error && autoOk && onAutoApprove) {
+      await onAutoApprove(newId);
+    }
     setSubmitting(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
 

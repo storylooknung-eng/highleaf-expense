@@ -189,6 +189,16 @@ function App() {
     return { error };
   };
 
+  const autoApproveRecord = async id => {
+    const updates = {
+      status: "approved",
+      approved_by: "ระบบ (อนุมัติอัตโนมัติ)",
+      approved_at: new Date().toISOString(),
+    };
+    const { error } = await window.db.from("expenses").update(updates).eq("id", id);
+    if (!error) setRecords(rs => rs.map(r => r.id === id ? { ...r, ...updates } : r));
+  };
+
   // ─── Render guards ───
   if (authLoading) return <LoadingScreen msg="กำลังตรวจสอบสิทธิ์…" sub="Supabase Auth" />;
   if (!user)       return <AuthPage />;
@@ -247,7 +257,7 @@ function App() {
 
         <div className="content">
           {route === "dashboard" && <Dashboard records={records} period={period} setPeriod={setPeriod} goCreate={() => go("create")} />}
-          {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} appSettings={appSettings} />}
+          {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} appSettings={appSettings} onAutoApprove={autoApproveRecord} />}
           {route === "records"   && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} onDelete={deleteRecord} profile={profile} />}
           {route === "approvals" && canManage && <Approvals records={records} onAct={actOn} />}
           {route === "settings"  && profile?.role === "admin" && <Settings profile={profile} appSettings={appSettings} setAppSettings={setAppSettings} />}
