@@ -129,6 +129,18 @@ function ExpenseForm({ onSubmit, goList, profile }) {
     });
     setSubmitting(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+
+    // แจ้งเตือน LINE (silent — ไม่ block ถ้า fail)
+    fetch("/api/notify-line", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: newId, person, amount,
+        cat: CATS[cat]?.name || cat,
+        note: note || CATS[cat]?.name,
+      }),
+    }).catch(() => {});
+
     toast("ส่งรายการเบิกเข้าระบบแล้ว · รอการอนุมัติ", "ok");
     goList();
   };
