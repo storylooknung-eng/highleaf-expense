@@ -9,7 +9,58 @@ const BILL_CATS = [
   { k: "other",    label: "อื่นๆ"               },
 ];
 
-function WalletBalanceCard({ balance, credit, debit, run }) {
+/* ---------- Mini slip upload (optional) ---------- */
+function SlipUpload({ file, setFile }) {
+  const inputRef  = useRef(null);
+  const cameraRef = useRef(null);
+
+  const pick = f => {
+    if (!f || f.size > 10 * 1024 * 1024) return;
+    const reader = new FileReader();
+    reader.onload = e => setFile({ fileObj: f, name: f.name, dataUrl: e.target.result });
+    reader.readAsDataURL(f);
+  };
+
+  if (file) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 12,
+      border: "1.5px solid var(--brand-100)", background: "var(--brand-50)" }}>
+      {file.dataUrl && file.fileObj?.type?.startsWith("image/")
+        ? <img src={file.dataUrl} style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 8 }} />
+        : <ReceiptSVG hue={140} style={{ width: 48, height: 48 }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</div>
+        <div style={{ fontSize: 12, color: "var(--brand)" }}>แนบแล้ว</div>
+      </div>
+      <button type="button" className="icon-btn" onClick={() => setFile(null)}><I.x /></button>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <button type="button" onClick={() => inputRef.current.click()}
+        style={{ flex: 1, minWidth: 140, padding: "10px 16px", borderRadius: 12,
+          border: "1.5px dashed var(--line)", background: "var(--surface)",
+          fontSize: 13.5, fontWeight: 600, color: "var(--ink-3)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer" }}>
+        <I.upload style={{ width: 16, height: 16 }} />แนบสลิป (ไม่บังคับ)
+      </button>
+      <button type="button" onClick={() => cameraRef.current.click()}
+        style={{ padding: "10px 16px", borderRadius: 12,
+          border: "1.5px solid var(--brand-100)", background: "var(--brand-50)",
+          fontSize: 13.5, fontWeight: 600, color: "var(--brand)",
+          display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        📷 ถ่ายรูป
+      </button>
+      <input ref={inputRef} type="file" accept="image/*,.pdf" style={{ display: "none" }}
+        onChange={e => pick(e.target.files[0])} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+        onChange={e => pick(e.target.files[0])} />
+    </div>
+  );
+}
+
+/* ---------- Balance card ---------- */
+function WalletBalanceCard({ balance, credit, debit, run, name }) {
   const n = useCountUp(balance, 1100, run);
   const safe = balance >= 0;
   return (
@@ -19,6 +70,7 @@ function WalletBalanceCard({ balance, credit, debit, run }) {
     }}>
       <div style={{ position: "absolute", right: -50, top: -50, width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,.07)" }}></div>
       <div style={{ position: "absolute", right: 60, bottom: -60, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,.05)" }}></div>
+      {name && <div style={{ fontSize: 13, opacity: .75, marginBottom: 4 }}>{name}</div>}
       <div style={{ fontSize: 13, opacity: .82, marginBottom: 6 }}>ยอดคงเหลือในกระเป๋าเงิน</div>
       <div className="num" style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-.5px", marginBottom: 18 }}>
         <span style={{ fontSize: 22, verticalAlign: "middle", opacity: .85 }}>฿</span>
@@ -38,9 +90,11 @@ function WalletBalanceCard({ balance, credit, debit, run }) {
   );
 }
 
+/* ---------- Bill form ---------- */
 function BillForm({ userId, onSuccess }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const [slipFile, setSlipFile] = useState(null);
   const [form, setForm] = useState({ amount: "", description: "", cat: "promote" });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -51,17 +105,41 @@ function BillForm({ userId, onSuccess }) {
     if (!amt || amt <= 0) { toast("กรุณาระบุจำนวนเงินที่ถูกต้อง", "warn"); return; }
     if (!form.description.trim()) { toast("กรุณาระบุรายละเอียด", "warn"); return; }
     setSaving(true);
+
     const catLabel = BILL_CATS.find(c => c.k === form.cat)?.label || form.cat;
+    const txId = "BILL-" + Date.now().toString().slice(-8);
+
+    // อัปโหลด slip ถ้ามี
+    let slip_path = null, slip_url = null;
+    if (slipFile?.fileObj) {
+      const ext  = slipFile.fileObj.name.split(".").pop() || "jpg";
+      const path = userId + "/bill-" + txId + "." + ext.toLowerCase();
+      const { error: upErr } = await window.db.storage
+        .from("slips").upload(path, slipFile.fileObj, { upsert: true });
+      if (!upErr) {
+        slip_path = path;
+      } else {
+        console.warn("[Storage] slip upload failed:", upErr.message);
+      }
+      if (slipFile.dataUrl) {
+        try { localStorage.setItem("slip_bill_" + txId, slipFile.dataUrl); } catch (_) {}
+      }
+    }
+
     const { error } = await window.db.from("wallet_transactions").insert({
       user_id: userId,
       type: "debit",
       amount: amt,
       description: `[${catLabel}] ${form.description.trim()}`,
+      slip_path,
+      slip_url,
     });
+
     setSaving(false);
     if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
     toast("ตัดบิลสำเร็จ ฿" + amt.toLocaleString("en-US"));
     setForm({ amount: "", description: "", cat: "promote" });
+    setSlipFile(null);
     onSuccess();
   };
 
@@ -92,6 +170,10 @@ function BillForm({ userId, onSuccess }) {
           <input className="inp" placeholder="เช่น ค่าโปรโมทไลฟ์ วันที่ 1 มิ.ย." maxLength={200}
             value={form.description} onChange={e => set("description", e.target.value)} required />
         </div>
+        <div className="field">
+          <label className="lbl">แนบสลิป</label>
+          <SlipUpload file={slipFile} setFile={setSlipFile} />
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button type="submit" className="btn-primary" disabled={saving}>
             {saving ? "กำลังบันทึก…" : <><I.scissors />ตัดบิล</>}
@@ -103,7 +185,41 @@ function BillForm({ userId, onSuccess }) {
   );
 }
 
-function TxRow({ tx }) {
+/* ---------- Slip viewer ---------- */
+function BillSlip({ tx }) {
+  const [url, setUrl] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!tx.slip_path && !tx.slip_url) return;
+    if (tx.slip_url) { setUrl(tx.slip_url); return; }
+    const local = localStorage.getItem("slip_bill_" + tx.id);
+    if (local) { setUrl(local); return; }
+    if (tx.slip_path) {
+      window.db.storage.from("slips").createSignedUrl(tx.slip_path, 3600)
+        .then(({ data }) => { if (data?.signedUrl) setUrl(data.signedUrl); });
+    }
+  }, [tx.id]);
+
+  if (!tx.slip_path && !tx.slip_url) return null;
+  return (
+    <>
+      <button type="button" className="icon-btn" title="ดูสลิป" style={{ color: "var(--brand)" }}
+        onClick={() => setOpen(true)}><I.eye /></button>
+      {open && url && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 9999,
+          display: "grid", placeItems: "center" }} onClick={() => setOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: 16, maxWidth: "90vw", maxHeight: "90vh", overflow: "auto" }}>
+            <img src={url} style={{ maxWidth: "80vw", maxHeight: "78vh", borderRadius: 10, display: "block" }} />
+            <button className="btn-primary" style={{ marginTop: 12, width: "100%" }} onClick={() => setOpen(false)}>ปิด</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ---------- Transaction row ---------- */
+function TxRow({ tx, showUser }) {
   const isCredit = tx.type === "credit";
   return (
     <tr>
@@ -118,16 +234,19 @@ function TxRow({ tx }) {
         </div>
       </td>
       <td>
+        {showUser && tx._userName && (
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 2 }}>
+            <Avatar name={tx._userName} size={18} style={{ marginRight: 4 }} /> {tx._userName}
+          </div>
+        )}
         <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--ink)" }}>{tx.description}</div>
         <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
           {thDate(tx.created_at.slice(0, 10), true)} · {tx.created_at.slice(11, 16)} น.
         </div>
       </td>
-      <td className="ta-r">
-        <span className={"num"} style={{
-          fontWeight: 700, fontSize: 15,
-          color: isCredit ? "var(--brand)" : "#BF4530"
-        }}>
+      <td className="ta-r" style={{ whiteSpace: "nowrap" }}>
+        {tx.slip_path || tx.slip_url ? <BillSlip tx={tx} /> : null}
+        <span className="num" style={{ fontWeight: 700, fontSize: 15, color: isCredit ? "var(--brand)" : "#BF4530" }}>
           {isCredit ? "+" : "−"}{THB(tx.amount)}
         </span>
       </td>
@@ -135,21 +254,108 @@ function TxRow({ tx }) {
   );
 }
 
+/* ---------- Admin: all users balances ---------- */
+function AdminOverview({ allTxs, profiles }) {
+  const byUser = {};
+  allTxs.forEach(tx => {
+    if (!byUser[tx.user_id]) byUser[tx.user_id] = { credit: 0, debit: 0, txs: [] };
+    byUser[tx.user_id][tx.type === "credit" ? "credit" : "debit"] += Number(tx.amount);
+    byUser[tx.user_id].txs.push(tx);
+  });
+
+  const rows = Object.entries(byUser).map(([uid, v]) => {
+    const p = profiles.find(p => p.id === uid);
+    return { uid, name: p?.name || uid, dept: p?.dept || "", balance: v.credit - v.debit, credit: v.credit, debit: v.debit, txs: v.txs };
+  }).sort((a, b) => b.balance - a.balance);
+
+  const [expand, setExpand] = useState(null);
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div className="card-pad" style={{ paddingBottom: 6 }}>
+        <div className="section-head">
+          <h2>ยอดคงเหลือทุกคน</h2>
+          <span className="sub ml-auto">{rows.length} คน</span>
+        </div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>ชื่อ</th>
+              <th>แผนก</th>
+              <th className="ta-r">รับเข้า</th>
+              <th className="ta-r">ตัดบิล</th>
+              <th className="ta-r">คงเหลือ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <React.Fragment key={r.uid}>
+                <tr>
+                  <td><div className="who"><Avatar name={r.name} /><div className="nm">{r.name}</div></div></td>
+                  <td style={{ color: "var(--ink-3)", fontSize: 13 }}>{r.dept}</td>
+                  <td className="ta-r num" style={{ color: "var(--brand)", fontWeight: 600 }}>+{THB(r.credit)}</td>
+                  <td className="ta-r num" style={{ color: "#BF4530", fontWeight: 600 }}>-{THB(r.debit)}</td>
+                  <td className="ta-r num" style={{ fontWeight: 700, fontSize: 15, color: r.balance >= 0 ? "var(--ink)" : "#BF4530" }}>{THB(r.balance)}</td>
+                  <td className="ta-r">
+                    <button className="icon-btn" title="ดูรายการ" onClick={() => setExpand(expand === r.uid ? null : r.uid)}>
+                      <I.chevron style={{ transform: expand === r.uid ? "rotate(90deg)" : "none", transition: ".2s" }} />
+                    </button>
+                  </td>
+                </tr>
+                {expand === r.uid && r.txs.map(tx => (
+                  <tr key={tx.id} style={{ background: "var(--bg)" }}>
+                    <td colSpan={6} style={{ paddingLeft: 48, paddingTop: 4, paddingBottom: 4 }}>
+                      <table className="tbl" style={{ margin: 0 }}>
+                        <tbody><TxRow tx={tx} showUser={false} /></tbody>
+                      </table>
+                    </td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Main WalletPage ---------- */
 function WalletPage({ profile }) {
   const toast = useToast();
+  const isAdmin = profile?.role === "admin";
   const [txs, setTxs] = useState([]);
+  const [allTxs, setAllTxs] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [run, setRun] = useState(false);
+  const [tab, setTab] = useState("mine"); // "mine" | "all"
 
   const loadTxs = async () => {
     setLoading(true);
-    const { data, error } = await window.db
+
+    // โหลดของตัวเอง
+    const { data: myData, error } = await window.db
       .from("wallet_transactions")
       .select("*")
       .eq("user_id", profile.id)
       .order("created_at", { ascending: false });
     if (error) toast("โหลดข้อมูลไม่สำเร็จ: " + error.message, "warn");
-    setTxs(data || []);
+    setTxs(myData || []);
+
+    // admin โหลดทั้งหมด
+    if (isAdmin) {
+      const [{ data: all }, { data: prof }] = await Promise.all([
+        window.db.from("wallet_transactions").select("*").order("created_at", { ascending: false }),
+        window.db.from("user_profiles").select("id,name,dept"),
+      ]);
+      setAllTxs(all || []);
+      setProfiles(prof || []);
+    }
+
     setLoading(false);
   };
 
@@ -159,8 +365,8 @@ function WalletPage({ profile }) {
     return () => clearTimeout(t);
   }, [profile.id]);
 
-  const credit = txs.filter(t => t.type === "credit").reduce((s, t) => s + Number(t.amount), 0);
-  const debit  = txs.filter(t => t.type === "debit").reduce((s, t) => s + Number(t.amount), 0);
+  const credit  = txs.filter(t => t.type === "credit").reduce((s, t) => s + Number(t.amount), 0);
+  const debit   = txs.filter(t => t.type === "debit").reduce((s, t) => s + Number(t.amount), 0);
   const balance = credit - debit;
 
   if (loading) return (
@@ -171,30 +377,64 @@ function WalletPage({ profile }) {
 
   return (
     <div className="page">
-      <WalletBalanceCard balance={balance} credit={credit} debit={debit} run={run} />
-      <BillForm userId={profile.id} onSuccess={loadTxs} />
-
-      <div className="card">
-        <div className="card-pad" style={{ paddingBottom: 6 }}>
-          <div className="section-head">
-            <h2>ประวัติธุรกรรม</h2>
-            <span className="sub ml-auto">{txs.length} รายการ</span>
-          </div>
+      {/* Tab switcher สำหรับ admin */}
+      {isAdmin && (
+        <div className="seg" style={{ marginBottom: 18 }}>
+          <button className={tab === "mine" ? "on" : ""} onClick={() => setTab("mine")}>กระเป๋าของฉัน</button>
+          <button className={tab === "all"  ? "on" : ""} onClick={() => setTab("all")}>ภาพรวมทุกคน</button>
         </div>
-        {txs.length === 0 ? (
-          <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>
-            ยังไม่มีธุรกรรม — เงินจะเข้ากระเป๋าเมื่อรายการเบิกได้รับการอนุมัติ
+      )}
+
+      {tab === "all" && isAdmin ? (
+        <>
+          <AdminOverview allTxs={allTxs} profiles={profiles} />
+          {/* รายการทั้งหมด */}
+          <div className="card">
+            <div className="card-pad" style={{ paddingBottom: 6 }}>
+              <div className="section-head">
+                <h2>รายการตัดบิลทั้งหมด</h2>
+                <span className="sub ml-auto">{allTxs.filter(t => t.type === "debit").length} รายการ</span>
+              </div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table className="tbl">
+                <tbody>
+                  {allTxs.filter(t => t.type === "debit").map(tx => {
+                    const p = profiles.find(p => p.id === tx.user_id);
+                    return <TxRow key={tx.id} tx={{ ...tx, _userName: p?.name }} showUser={true} />;
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <tbody>
-                {txs.map(tx => <TxRow key={tx.id} tx={tx} />)}
-              </tbody>
-            </table>
+        </>
+      ) : (
+        <>
+          <WalletBalanceCard balance={balance} credit={credit} debit={debit} run={run} />
+          <BillForm userId={profile.id} onSuccess={loadTxs} />
+          <div className="card">
+            <div className="card-pad" style={{ paddingBottom: 6 }}>
+              <div className="section-head">
+                <h2>ประวัติธุรกรรม</h2>
+                <span className="sub ml-auto">{txs.length} รายการ</span>
+              </div>
+            </div>
+            {txs.length === 0 ? (
+              <div style={{ padding: "40px 24px", textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>
+                ยังไม่มีธุรกรรม — เงินจะเข้ากระเป๋าเมื่อรายการเบิกได้รับการอนุมัติ
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="tbl">
+                  <tbody>
+                    {txs.map(tx => <TxRow key={tx.id} tx={tx} showUser={false} />)}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

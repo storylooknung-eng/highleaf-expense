@@ -22,6 +22,10 @@ create table if not exists public.wallet_transactions (
 
 create index if not exists wt_user_idx on public.wallet_transactions (user_id, created_at desc);
 
+-- slip attachment (optional)
+alter table public.wallet_transactions add column if not exists slip_path text;
+alter table public.wallet_transactions add column if not exists slip_url  text;
+
 alter table public.wallet_transactions enable row level security;
 
 drop policy if exists "wallet_select_own_or_manager" on public.wallet_transactions;
