@@ -3,6 +3,7 @@ const NAV = [
   { k: "dashboard", label: "ภาพรวม", icon: I.grid },
   { k: "create",    label: "สร้างรายการเบิก", icon: I.receipt },
   { k: "records",   label: "รายการทั้งหมด", icon: I.list },
+  { k: "wallet",    label: "กระเป๋าเงิน / ตัดบิล", icon: I.coins },
   { k: "approvals", label: "อนุมัติรายการ", icon: I.check2, badgeKey: "pending" },
   { k: "settings",  label: "ตั้งค่า", icon: I.gear },
 ];
@@ -10,6 +11,7 @@ const TITLES = {
   dashboard: ["ภาพรวมระบบเบิกเงิน",   "สรุปยอดและแนวโน้มค่าใช้จ่าย"],
   create:    ["สร้างรายการเบิกเงิน",   "กรอกข้อมูลและแนบหลักฐานการจ่าย"],
   records:   ["รายการเบิกทั้งหมด",     "ค้นหา กรอง และตรวจสอบรายการ"],
+  wallet:    ["กระเป๋าเงิน",           "ยอดคงเหลือและตัดบิลค่าใช้จ่าย"],
   approvals: ["อนุมัติรายการ",         "ตรวจสอบและอนุมัติคำขอเบิก"],
   settings:  ["ตั้งค่าระบบ",           "จัดการผู้ใช้งานและนโยบายบริษัท"],
 };
@@ -259,6 +261,7 @@ function App() {
           {route === "dashboard" && <Dashboard records={records} period={period} setPeriod={setPeriod} goCreate={() => go("create")} />}
           {route === "create"    && <ExpenseForm onSubmit={addRecord} goList={() => go("records")} profile={profile} appSettings={appSettings} onAutoApprove={autoApproveRecord} />}
           {route === "records"   && <RecordsTable records={records} goCreate={() => go("create")} onEdit={editRecord} onDelete={deleteRecord} profile={profile} />}
+          {route === "wallet"    && <WalletPage profile={profile} />}
           {route === "approvals" && canManage && <Approvals records={records} onAct={actOn} />}
           {route === "settings"  && profile?.role === "admin" && <Settings profile={profile} appSettings={appSettings} setAppSettings={setAppSettings} />}
         </div>
