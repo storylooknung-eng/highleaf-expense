@@ -441,6 +441,42 @@ function AdminOverview({ allTxs, profiles, adminName, onReload }) {
   );
 }
 
+/* ---------- Export helpers ---------- */
+function exportTxs(txs, filename, profiles) {
+  const header = ["วันที่", "เวลา", "ประเภท", "รายละเอียด", "จำนวนเงิน (บาท)", "แก้ไขแล้ว (ครั้ง)"];
+  if (profiles) header.splice(2, 0, "ชื่อผู้ทำรายการ");
+  const rows = txs.map(tx => {
+    const typeLabel = tx.type === "credit" ? "รับเงินเบิก" : "ตัดบิล";
+    const userName  = profiles ? (profiles.find(p => p.id === tx.user_id)?.name || tx.user_id) : undefined;
+    const row = [
+      tx.created_at.slice(0, 10),
+      tx.created_at.slice(11, 16),
+      typeLabel,
+      tx.description,
+      Number(tx.amount),
+      (tx.edit_log || []).length,
+    ];
+    if (profiles) row.splice(2, 0, userName);
+    return row;
+  });
+  return [header, ...rows];
+}
+
+function ExportButtons({ txs, filenameBase, profiles }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <button className="btn-ghost" style={{ fontSize: 13 }}
+        onClick={() => downloadXlsx(filenameBase + ".xlsx", exportTxs(txs, filenameBase, profiles))}>
+        <I.download style={{ width: 15, height: 15 }} />Excel
+      </button>
+      <button className="btn-ghost" style={{ fontSize: 13 }}
+        onClick={() => downloadCsv(filenameBase + ".csv", exportTxs(txs, filenameBase, profiles))}>
+        <I.download style={{ width: 15, height: 15 }} />CSV
+      </button>
+    </div>
+  );
+}
+
 /* ---------- Main WalletPage ---------- */
 function WalletPage({ profile }) {
   const toast = useToast();
@@ -511,7 +547,8 @@ function WalletPage({ profile }) {
             <div className="card-pad" style={{ paddingBottom: 6 }}>
               <div className="section-head">
                 <h2>รายการตัดบิลทั้งหมด</h2>
-                <span className="sub ml-auto">{allTxs.filter(t => t.type === "debit").length} รายการ</span>
+                <span className="sub" style={{ marginRight: "auto", marginLeft: 8 }}>{allTxs.filter(t => t.type === "debit").length} รายการ</span>
+                <ExportButtons txs={allTxs} filenameBase={"wallet_all_" + todayIso()} profiles={profiles} />
               </div>
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -535,7 +572,8 @@ function WalletPage({ profile }) {
             <div className="card-pad" style={{ paddingBottom: 6 }}>
               <div className="section-head">
                 <h2>ประวัติธุรกรรม</h2>
-                <span className="sub ml-auto">{txs.length} รายการ</span>
+                <span className="sub" style={{ marginRight: "auto", marginLeft: 8 }}>{txs.length} รายการ</span>
+                <ExportButtons txs={txs} filenameBase={"wallet_" + profile.name + "_" + todayIso()} />
               </div>
             </div>
             {txs.length === 0 ? (
