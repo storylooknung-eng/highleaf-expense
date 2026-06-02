@@ -218,44 +218,162 @@ function BillSlip({ tx }) {
   );
 }
 
-/* ---------- Transaction row ---------- */
-function TxRow({ tx, showUser }) {
-  const isCredit = tx.type === "credit";
+/* ---------- Edit modal ---------- */
+function EditTxModal({ tx, adminName, onClose, onSaved }) {
+  const toast = useToast();
+  const [amount, setAmount]   = useState(String(tx.amount));
+  const [desc,   setDesc]     = useState(tx.description);
+  const [saving, setSaving]   = useState(false);
+
+  const submit = async e => {
+    e.preventDefault();
+    const newAmt = parseFloat(amount);
+    if (!newAmt || newAmt <= 0) { toast("จำนวนเงินไม่ถูกต้อง", "warn"); return; }
+    if (!desc.trim()) { toast("กรุณาระบุรายละเอียด", "warn"); return; }
+    setSaving(true);
+
+    const logEntry = {
+      at: new Date().toISOString(),
+      by: adminName,
+      old_amount: tx.amount,
+      old_description: tx.description,
+    };
+    const newLog = [...(tx.edit_log || []), logEntry];
+
+    const { error } = await window.db.from("wallet_transactions")
+      .update({ amount: newAmt, description: desc.trim(), edit_log: newLog })
+      .eq("id", tx.id);
+
+    setSaving(false);
+    if (error) { toast("แก้ไขไม่สำเร็จ: " + error.message, "warn"); return; }
+    toast("แก้ไขสำเร็จ");
+    onSaved();
+    onClose();
+  };
+
   return (
-    <tr>
-      <td style={{ width: 40 }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 10,
-          background: isCredit ? "var(--brand-50)" : "var(--red-bg)",
-          display: "grid", placeItems: "center",
-          color: isCredit ? "var(--brand)" : "#BF4530"
-        }}>
-          {isCredit ? <I.down style={{ width: 16, height: 16 }} /> : <I.up style={{ width: 16, height: 16 }} />}
-        </div>
-      </td>
-      <td>
-        {showUser && tx._userName && (
-          <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 2 }}>
-            <Avatar name={tx._userName} size={18} style={{ marginRight: 4 }} /> {tx._userName}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 9999, display: "grid", placeItems: "center" }}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", borderRadius: 18, padding: 28, width: "min(480px,92vw)", boxShadow: "var(--sh-2)" }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 18 }}>แก้ไขรายการ</div>
+        <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
+          <div className="field">
+            <label className="lbl">จำนวนเงิน (บาท)</label>
+            <input className="inp num" type="number" min="1" step="0.01"
+              value={amount} onChange={e => setAmount(e.target.value)} required />
           </div>
-        )}
-        <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--ink)" }}>{tx.description}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
-          {thDate(tx.created_at.slice(0, 10), true)} · {tx.created_at.slice(11, 16)} น.
-        </div>
-      </td>
-      <td className="ta-r" style={{ whiteSpace: "nowrap" }}>
-        {tx.slip_path || tx.slip_url ? <BillSlip tx={tx} /> : null}
-        <span className="num" style={{ fontWeight: 700, fontSize: 15, color: isCredit ? "var(--brand)" : "#BF4530" }}>
-          {isCredit ? "+" : "−"}{THB(tx.amount)}
-        </span>
-      </td>
-    </tr>
+          <div className="field">
+            <label className="lbl">รายละเอียด</label>
+            <input className="inp" value={desc} onChange={e => setDesc(e.target.value)} required />
+          </div>
+          {(tx.edit_log || []).length > 0 && (
+            <div style={{ background: "var(--bg)", borderRadius: 10, padding: "10px 14px" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>ประวัติการแก้ไข</div>
+              {[...tx.edit_log].reverse().map((log, i) => (
+                <div key={i} style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 6, borderLeft: "2px solid var(--line)", paddingLeft: 10 }}>
+                  <div style={{ fontWeight: 600 }}>{log.by} · {log.at.slice(0,10)} {log.at.slice(11,16)} น.</div>
+                  <div>เดิม: <span className="num">{THB(log.old_amount)}</span> — {log.old_description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="btn-ghost" onClick={onClose}>ยกเลิก</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "กำลังบันทึก…" : "บันทึก"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Transaction row ---------- */
+function TxRow({ tx, showUser, isAdmin, adminName, onDeleted, onEdited }) {
+  const toast = useToast();
+  const isCredit = tx.type === "credit";
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [editing, setEditing]       = useState(false);
+  const [deleting, setDeleting]     = useState(false);
+
+  const doDelete = async () => {
+    setDeleting(true);
+    const { error } = await window.db.from("wallet_transactions").delete().eq("id", tx.id);
+    setDeleting(false);
+    if (error) { toast("ลบไม่สำเร็จ: " + error.message, "warn"); return; }
+    toast("ลบรายการแล้ว", "warn");
+    onDeleted?.();
+    setConfirmDel(false);
+  };
+
+  return (
+    <>
+      <tr>
+        <td style={{ width: 40 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: isCredit ? "var(--brand-50)" : "var(--red-bg)",
+            display: "grid", placeItems: "center",
+            color: isCredit ? "var(--brand)" : "#BF4530"
+          }}>
+            {isCredit ? <I.down style={{ width: 16, height: 16 }} /> : <I.up style={{ width: 16, height: 16 }} />}
+          </div>
+        </td>
+        <td>
+          {showUser && tx._userName && (
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 2 }}>
+              <Avatar name={tx._userName} size={18} /> {tx._userName}
+            </div>
+          )}
+          <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--ink)" }}>{tx.description}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2, display: "flex", alignItems: "center", gap: 8 }}>
+            {thDate(tx.created_at.slice(0, 10), true)} · {tx.created_at.slice(11, 16)} น.
+            {(tx.edit_log || []).length > 0 && (
+              <span style={{ fontSize: 11, background: "var(--amber-bg)", color: "#C0852A", borderRadius: 6, padding: "1px 7px", fontWeight: 600 }}>
+                แก้ไขแล้ว {tx.edit_log.length} ครั้ง
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="ta-r" style={{ whiteSpace: "nowrap" }}>
+          {tx.slip_path || tx.slip_url ? <BillSlip tx={tx} /> : null}
+          {isAdmin && (
+            <>
+              <button className="icon-btn" title="แก้ไข" onClick={() => setEditing(true)}><I.edit /></button>
+              <button className="icon-btn" title="ลบ" style={{ color: "#BF4530" }}
+                onClick={() => setConfirmDel(true)}><I.trash /></button>
+            </>
+          )}
+          <span className="num" style={{ fontWeight: 700, fontSize: 15, color: isCredit ? "var(--brand)" : "#BF4530" }}>
+            {isCredit ? "+" : "−"}{THB(tx.amount)}
+          </span>
+        </td>
+      </tr>
+      {/* inline delete confirm */}
+      {confirmDel && (
+        <tr style={{ background: "var(--red-bg)" }}>
+          <td colSpan={3} style={{ padding: "10px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: "#BF4530", flex: 1 }}>
+                ยืนยันลบรายการนี้? ({tx.description})
+              </span>
+              <button className="btn-ghost" onClick={() => setConfirmDel(false)}>ยกเลิก</button>
+              <button className="btn-primary" style={{ background: "#BF4530" }}
+                disabled={deleting} onClick={doDelete}>
+                {deleting ? "กำลังลบ…" : "ยืนยันลบ"}
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
+      {editing && (
+        <EditTxModal tx={tx} adminName={adminName} onClose={() => setEditing(false)} onSaved={onEdited} />
+      )}
+    </>
   );
 }
 
 /* ---------- Admin: all users balances ---------- */
-function AdminOverview({ allTxs, profiles }) {
+function AdminOverview({ allTxs, profiles, adminName, onReload }) {
   const byUser = {};
   allTxs.forEach(tx => {
     if (!byUser[tx.user_id]) byUser[tx.user_id] = { credit: 0, debit: 0, txs: [] };
@@ -309,7 +427,7 @@ function AdminOverview({ allTxs, profiles }) {
                   <tr key={tx.id} style={{ background: "var(--bg)" }}>
                     <td colSpan={6} style={{ paddingLeft: 48, paddingTop: 4, paddingBottom: 4 }}>
                       <table className="tbl" style={{ margin: 0 }}>
-                        <tbody><TxRow tx={tx} showUser={false} /></tbody>
+                        <tbody><TxRow tx={tx} showUser={false} isAdmin={true} adminName={adminName} onDeleted={onReload} onEdited={onReload} /></tbody>
                       </table>
                     </td>
                   </tr>
@@ -387,7 +505,7 @@ function WalletPage({ profile }) {
 
       {tab === "all" && isAdmin ? (
         <>
-          <AdminOverview allTxs={allTxs} profiles={profiles} />
+          <AdminOverview allTxs={allTxs} profiles={profiles} adminName={profile.name} onReload={loadTxs} />
           {/* รายการทั้งหมด */}
           <div className="card">
             <div className="card-pad" style={{ paddingBottom: 6 }}>
@@ -401,7 +519,8 @@ function WalletPage({ profile }) {
                 <tbody>
                   {allTxs.filter(t => t.type === "debit").map(tx => {
                     const p = profiles.find(p => p.id === tx.user_id);
-                    return <TxRow key={tx.id} tx={{ ...tx, _userName: p?.name }} showUser={true} />;
+                    return <TxRow key={tx.id} tx={{ ...tx, _userName: p?.name }} showUser={true}
+                      isAdmin={true} adminName={profile.name} onDeleted={loadTxs} onEdited={loadTxs} />;
                   })}
                 </tbody>
               </table>
@@ -427,7 +546,8 @@ function WalletPage({ profile }) {
               <div style={{ overflowX: "auto" }}>
                 <table className="tbl">
                   <tbody>
-                    {txs.map(tx => <TxRow key={tx.id} tx={tx} showUser={false} />)}
+                    {txs.map(tx => <TxRow key={tx.id} tx={tx} showUser={false}
+                      isAdmin={isAdmin} adminName={profile.name} onDeleted={loadTxs} onEdited={loadTxs} />)}
                   </tbody>
                 </table>
               </div>

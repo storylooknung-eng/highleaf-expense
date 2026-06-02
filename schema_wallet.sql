@@ -26,6 +26,24 @@ create index if not exists wt_user_idx on public.wallet_transactions (user_id, c
 alter table public.wallet_transactions add column if not exists slip_path text;
 alter table public.wallet_transactions add column if not exists slip_url  text;
 
+-- edit history log (admin only) — stores array of {at, old_amount, old_description, by}
+alter table public.wallet_transactions add column if not exists edit_log  jsonb not null default '[]'::jsonb;
+
+-- admin can update/delete any transaction
+drop policy if exists "wallet_update_admin" on public.wallet_transactions;
+drop policy if exists "wallet_delete_admin" on public.wallet_transactions;
+
+create policy "wallet_update_admin"
+on public.wallet_transactions for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "wallet_delete_admin"
+on public.wallet_transactions for delete
+to authenticated
+using (public.is_admin());
+
 alter table public.wallet_transactions enable row level security;
 
 drop policy if exists "wallet_select_own_or_manager" on public.wallet_transactions;
