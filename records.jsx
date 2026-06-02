@@ -1,5 +1,28 @@
 // ============ records.jsx — slip viewer, edit modal, full table ============
 
+function CommentImage({ path }) {
+  const [url, setUrl] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    window.db.storage.from("slips").createSignedUrl(path, 3600)
+      .then(({ data }) => { if (data?.signedUrl) setUrl(data.signedUrl); });
+  }, [path]);
+  if (!url) return null;
+  return (
+    <>
+      <img src={url} onClick={() => setOpen(true)}
+        style={{ marginTop: 8, maxWidth: "100%", maxHeight: 180, borderRadius: 8,
+          display: "block", cursor: "zoom-in", objectFit: "cover", border: "1px solid var(--line)" }} />
+      {open && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", zIndex: 99999,
+          display: "grid", placeItems: "center" }} onClick={() => setOpen(false)}>
+          <img src={url} style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: 12, objectFit: "contain" }} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function SlipModal({ rec, onClose, profile }) {
   if (!rec) return null;
   const slipImg = useSlipUrl(rec);
@@ -9,6 +32,8 @@ function SlipModal({ rec, onClose, profile }) {
   const [loadingC, setLoadingC]   = useState(true);
   const [text, setText]           = useState("");
   const [posting, setPosting]     = useState(false);
+  const [commentImg, setCommentImg] = useState(null); // { fileObj, dataUrl, name }
+  const commentImgRef = useRef(null);
 
   useEffect(() => {
     window.db.from("expense_comments")
@@ -17,18 +42,40 @@ function SlipModal({ rec, onClose, profile }) {
       .then(({ data }) => { setComments(data || []); setLoadingC(false); });
   }, [rec.id]);
 
+  const pickCommentImg = e => {
+    const f = e.target.files[0];
+    if (!f || f.size > 10 * 1024 * 1024) return;
+    const reader = new FileReader();
+    reader.onload = ev => setCommentImg({ fileObj: f, dataUrl: ev.target.result, name: f.name });
+    reader.readAsDataURL(f);
+    e.target.value = "";
+  };
+
   const postComment = async e => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() && !commentImg) return;
     setPosting(true);
+
+    // upload รูป comment ถ้ามี
+    let image_path = null;
+    if (commentImg?.fileObj) {
+      const ext  = commentImg.fileObj.name.split(".").pop() || "jpg";
+      const path = (profile?.id || "anon") + "/comment-" + Date.now() + "." + ext.toLowerCase();
+      const { error: upErr } = await window.db.storage
+        .from("slips").upload(path, commentImg.fileObj, { upsert: true });
+      if (!upErr) image_path = path;
+      else console.warn("[Storage comment]", upErr.message);
+    }
+
     const { data, error } = await window.db.from("expense_comments").insert({
       expense_id: rec.id,
       user_id:    profile?.id   || null,
       user_name:  profile?.name || "ผู้ใช้งาน",
       body:       text.trim(),
+      image_path,
     }).select().single();
     if (!error && data) setComments(c => [...c, data]);
-    setText(""); setPosting(false);
+    setText(""); setCommentImg(null); setPosting(false);
   };
 
   const delComment = async id => {
@@ -108,7 +155,10 @@ function SlipModal({ rec, onClose, profile }) {
                       <div style={{
                         fontSize: 13.5, lineHeight: 1.55, background: "var(--surface-2)",
                         padding: "8px 12px", borderRadius: "4px 12px 12px 12px", border: "1px solid var(--line)"
-                      }}>{c.body}</div>
+                      }}>
+                        {c.body}
+                        {c.image_path && <CommentImage path={c.image_path} />}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -116,16 +166,39 @@ function SlipModal({ rec, onClose, profile }) {
             )}
 
             {/* Add comment form */}
-            <form onSubmit={postComment} style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              <textarea className="inp" placeholder="เขียนความคิดเห็น…" value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(e); } }}
-                style={{ flex: 1, minHeight: 44, maxHeight: 120, resize: "vertical", fontSize: 13.5 }} />
-              <button type="submit" className="btn-primary"
-                style={{ height: 44, padding: "0 16px", flex: "none", opacity: posting || !text.trim() ? .6 : 1 }}
-                disabled={posting || !text.trim()}>
-                {posting ? "…" : <I.check />}
-              </button>
+            <form onSubmit={postComment} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* preview รูปที่เลือก */}
+              {commentImg && (
+                <div style={{ position: "relative", display: "inline-block", alignSelf: "flex-start" }}>
+                  <img src={commentImg.dataUrl} style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 10, border: "1.5px solid var(--line)", display: "block" }} />
+                  <button type="button" onClick={() => setCommentImg(null)}
+                    style={{ position: "absolute", top: -8, right: -8, width: 22, height: 22, borderRadius: "50%",
+                      background: "#BF4530", color: "#fff", border: "none", cursor: "pointer", fontSize: 12,
+                      display: "grid", placeItems: "center" }}>
+                    <I.x style={{ width: 12, height: 12 }} />
+                  </button>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <textarea className="inp" placeholder="เขียนความคิดเห็น…" value={text}
+                  onChange={e => setText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(e); } }}
+                  style={{ flex: 1, minHeight: 44, maxHeight: 120, resize: "vertical", fontSize: 13.5 }} />
+                {/* ปุ่มแนบรูป */}
+                <button type="button" title="แนบรูปภาพ"
+                  onClick={() => commentImgRef.current.click()}
+                  style={{ height: 44, width: 44, flex: "none", borderRadius: 10, border: "1.5px solid var(--line)",
+                    background: commentImg ? "var(--brand-50)" : "var(--surface)", color: commentImg ? "var(--brand)" : "var(--ink-3)",
+                    display: "grid", placeItems: "center", cursor: "pointer" }}>
+                  <I.upload style={{ width: 18, height: 18 }} />
+                </button>
+                <input ref={commentImgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickCommentImg} />
+                <button type="submit" className="btn-primary"
+                  style={{ height: 44, padding: "0 16px", flex: "none", opacity: posting || (!text.trim() && !commentImg) ? .6 : 1 }}
+                  disabled={posting || (!text.trim() && !commentImg)}>
+                  {posting ? "…" : <I.check />}
+                </button>
+              </div>
             </form>
           </div>
         </div>
