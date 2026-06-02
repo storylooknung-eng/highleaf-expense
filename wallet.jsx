@@ -185,6 +185,141 @@ function BillForm({ userId, onSuccess }) {
   );
 }
 
+/* ---------- Admin: ตัดบิลแทนคนอื่น ---------- */
+function AdminBillForm({ profiles, adminName, onSuccess }) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const [slipFile, setSlipFile] = useState(null);
+  const [form, setForm] = useState({ userId: "", amount: "", description: "", cat: "promote" });
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const selectedUser = profiles.find(p => p.id === form.userId);
+  const submit = async e => {
+    e.preventDefault();
+    if (!form.userId) { toast("กรุณาเลือกไอดีที่ต้องการตัดบิล", "warn"); return; }
+    const amt = parseFloat(form.amount);
+    if (!amt || amt <= 0) { toast("กรุณาระบุจำนวนเงินที่ถูกต้อง", "warn"); return; }
+    if (!form.description.trim()) { toast("กรุณาระบุรายละเอียด", "warn"); return; }
+    setSaving(true);
+
+    const catLabel = BILL_CATS.find(c => c.k === form.cat)?.label || form.cat;
+    const txId = "BILL-" + Date.now().toString().slice(-8);
+
+    let slip_path = null, slip_url = null;
+    if (slipFile?.fileObj) {
+      const ext  = slipFile.fileObj.name.split(".").pop() || "jpg";
+      const path = form.userId + "/bill-" + txId + "." + ext.toLowerCase();
+      const { error: upErr } = await window.db.storage
+        .from("slips").upload(path, slipFile.fileObj, { upsert: true });
+      if (!upErr) slip_path = path;
+      else console.warn("[Storage]", upErr.message);
+      if (slipFile.dataUrl) {
+        try { localStorage.setItem("slip_bill_" + txId, slipFile.dataUrl); } catch (_) {}
+      }
+    }
+
+    const { error } = await window.db.from("wallet_transactions").insert({
+      user_id: form.userId,
+      type: "debit",
+      amount: amt,
+      description: `[${catLabel}] ${form.description.trim()} (ตัดโดย: ${adminName})`,
+      slip_path,
+      slip_url,
+    });
+
+    setSaving(false);
+    if (error) { toast("เกิดข้อผิดพลาด: " + error.message, "warn"); return; }
+    toast(`ตัดบิล ${selectedUser?.name} ฿${amt.toLocaleString("en-US")} สำเร็จ`);
+    setForm({ userId: "", amount: "", description: "", cat: "promote" });
+    setSlipFile(null);
+    onSuccess();
+  };
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 18, border: "1.5px solid var(--brand-100)" }}>
+      <div className="section-head" style={{ marginBottom: 18 }}>
+        <div>
+          <h2>ตัดบิลแทน (Admin)</h2>
+          <span className="sub">ตัดยอดจากกระเป๋าของไอดีอื่น — เฉพาะผู้ดูแลระบบเท่านั้น</span>
+        </div>
+        <span className="badge b-amber ml-auto"><span className="bd"></span>Admin Only</span>
+      </div>
+      <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
+        {/* เลือก user */}
+        <div className="field">
+          <label className="lbl">เลือกไอดีที่ต้องการตัดบิล</label>
+          <select className="inp" value={form.userId} onChange={e => set("userId", e.target.value)} required>
+            <option value="">— เลือกผู้ใช้งาน —</option>
+            {profiles.map(p => (
+              <option key={p.id} value={p.id}>{p.name}{p.dept ? " · " + p.dept : ""}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* แสดงยอดคงเหลือของ user ที่เลือก */}
+        {selectedUser && (
+          <UserBalanceBadge userId={form.userId} userName={selectedUser.name} />
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }} className="bill-form-grid">
+          <div className="field">
+            <label className="lbl">หมวดหมู่</label>
+            <select className="inp" value={form.cat} onChange={e => set("cat", e.target.value)}>
+              {BILL_CATS.map(c => <option key={c.k} value={c.k}>{c.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="lbl">จำนวนเงิน (บาท)</label>
+            <input className="inp num" type="number" min="1" step="0.01" placeholder="0.00"
+              value={form.amount} onChange={e => set("amount", e.target.value)} required />
+          </div>
+        </div>
+        <div className="field">
+          <label className="lbl">รายละเอียด</label>
+          <input className="inp" placeholder="เช่น ค่าโปรโมทไลฟ์ วันที่ 1 มิ.ย." maxLength={200}
+            value={form.description} onChange={e => set("description", e.target.value)} required />
+        </div>
+        <div className="field">
+          <label className="lbl">แนบสลิป (ไม่บังคับ)</label>
+          <SlipUpload file={slipFile} setFile={setSlipFile} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? "กำลังบันทึก…" : <><I.scissors />ตัดบิลแทน</>}
+          </button>
+        </div>
+      </form>
+      <style>{`@media(max-width:600px){.bill-form-grid{grid-template-columns:1fr!important}}`}</style>
+    </div>
+  );
+}
+
+/* แสดงยอดคงเหลือของ user ที่เลือก */
+function UserBalanceBadge({ userId, userName }) {
+  const [bal, setBal] = useState(null);
+  useEffect(() => {
+    setBal(null);
+    window.db.from("wallet_transactions").select("type,amount").eq("user_id", userId)
+      .then(({ data }) => {
+        if (!data) return;
+        const credit = data.filter(t => t.type === "credit").reduce((s, t) => s + Number(t.amount), 0);
+        const debit  = data.filter(t => t.type === "debit").reduce((s, t) => s + Number(t.amount), 0);
+        setBal(credit - debit);
+      });
+  }, [userId]);
+  if (bal === null) return null;
+  const ok = bal >= 0;
+  return (
+    <div style={{ padding: "10px 14px", borderRadius: 10, background: ok ? "var(--brand-50)" : "var(--red-bg)",
+      color: ok ? "var(--brand)" : "#BF4530", fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+      <I.coins style={{ width: 18, height: 18 }} />
+      {userName} มียอดคงเหลือ <span className="num">{THB(bal)}</span>
+      {!ok && " ⚠️ ยอดติดลบ"}
+    </div>
+  );
+}
+
 /* ---------- Slip viewer ---------- */
 function BillSlip({ tx }) {
   const [url, setUrl] = useState(null);
@@ -541,6 +676,7 @@ function WalletPage({ profile }) {
 
       {tab === "all" && isAdmin ? (
         <>
+          <AdminBillForm profiles={profiles} adminName={profile.name} onSuccess={loadTxs} />
           <AdminOverview allTxs={allTxs} profiles={profiles} adminName={profile.name} onReload={loadTxs} />
           {/* รายการทั้งหมด */}
           <div className="card">
